@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -97,5 +99,34 @@ func TestHTTPModeStillRequiresAdministrator(t *testing.T) {
 	app.routes().ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusForbidden {
 		t.Fatalf("server mode must keep admin requirement: %d %s", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestClientLegacyDataDirectoryIsMigrated(t *testing.T) {
+	base := t.TempDir()
+	legacy := filepath.Join(base, clientLegacyAppName)
+	if err := os.MkdirAll(legacy, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(legacy, "marker"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(base, clientAppName)
+	moved, err := migrateLegacyClientDataDirectory(target)
+	if err != nil || !moved {
+		t.Fatalf("moved=%v err=%v", moved, err)
+	}
+	if _, err := os.Stat(filepath.Join(target, "marker")); err != nil {
+		t.Fatal(err)
+	}
+	if directoryExists(legacy) {
+		t.Fatal("legacy directory still exists")
+	}
+	// 新目录已存在时不再迁移。
+	if err := os.MkdirAll(legacy, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if moved, _ := migrateLegacyClientDataDirectory(target); moved {
+		t.Fatal("should not migrate when target exists")
 	}
 }

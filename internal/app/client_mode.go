@@ -21,9 +21,13 @@ import (
 // 用启动令牌鉴权，本机使用者即“本机所有者”，不经过账号体系。
 
 const (
-	clientAppName     = "果果剧库"
-	clientTokenCookie = "juku_client"
-	clientTokenEnv    = "JUKU_CLIENT_TOKEN"
+	clientAppName = "ByteTV"
+	// clientLegacyAppName 是改名前的数据目录名，启动时自动迁移。
+	clientLegacyAppName = "果果剧库"
+	// clientFallbackOutputDir 仅客户端模式使用：拿不到用户目录时的相对下载目录（服务器版仍为 defaultOutputDir()）。
+	clientFallbackOutputDir = "ByteTV Downloads"
+	clientTokenCookie       = "juku_client"
+	clientTokenEnv          = "JUKU_CLIENT_TOKEN"
 )
 
 type clientOwnerKey struct{}
@@ -38,7 +42,7 @@ func isClientOwner(ctx context.Context) bool {
 }
 
 // clientDataDirectory 返回系统标准用户数据目录，例如
-// macOS ~/Library/Application Support/果果剧库，Windows %AppData%\果果剧库。
+// macOS ~/Library/Application Support/ByteTV，Windows %AppData%\ByteTV。
 func clientDataDirectory() (string, error) {
 	base, err := os.UserConfigDir()
 	if err != nil {
@@ -51,7 +55,7 @@ func clientDataDirectory() (string, error) {
 func clientDefaultOutputDirectory() string {
 	home, err := os.UserHomeDir()
 	if err != nil || home == "" {
-		return defaultOutputDir()
+		return clientFallbackOutputDir
 	}
 	switch runtime.GOOS {
 	case "darwin":
@@ -64,6 +68,22 @@ func clientDefaultOutputDirectory() string {
 		}
 		return filepath.Join(home, clientAppName)
 	}
+}
+
+// migrateLegacyClientDataDirectory 在新目录不存在、旧中文目录存在时把旧目录整体改名为新目录。
+// 只用于默认数据目录；显式 -data-dir 不迁移。返回是否迁移。
+func migrateLegacyClientDataDirectory(directory string) (bool, error) {
+	if _, err := os.Lstat(directory); !errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	legacy := filepath.Join(filepath.Dir(directory), clientLegacyAppName)
+	if !directoryExists(legacy) {
+		return false, nil
+	}
+	if err := os.Rename(legacy, directory); err != nil {
+		return false, fmt.Errorf("迁移旧数据目录 %s 失败: %w", legacy, err)
+	}
+	return true, nil
 }
 
 func directoryExists(path string) bool {
@@ -79,6 +99,11 @@ func prepareClientDirectories(explicitDataDir string) (string, string, error) {
 		var err error
 		if directory, err = clientDataDirectory(); err != nil {
 			return "", "", err
+		}
+		if moved, err := migrateLegacyClientDataDirectory(directory); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+		} else if moved {
+			fmt.Fprintln(os.Stderr, "已将旧数据目录迁移到", directory)
 		}
 	}
 	directory, err := filepath.Abs(directory)
@@ -146,7 +171,7 @@ func (server *clientServer) handler() http.Handler {
 			return
 		}
 		if !server.authorized(request) {
-			writeJSON(writer, http.StatusUnauthorized, map[string]string{"error": "客户端令牌无效，请从果果剧库应用内打开"})
+			writeJSON(writer, http.StatusUnauthorized, map[string]string{"error": "客户端令牌无效，请从 Byte TV 应用内打开"})
 			return
 		}
 		if request.URL.Path == "/api/desktop/health" {
