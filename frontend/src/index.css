@@ -240,3 +240,4 @@ select { height: 28px; background: var(--panel); border: 1px solid var(--line); 
 .auto-next { display: inline-flex; gap: 4px; align-items: center; font-size: 12px; }
 .ep-drawer { position: absolute; right: 16px; top: 90px; bottom: 100px; width: 280px; z-index: 4; overflow: auto; padding: 14px; border-radius: 14px; background: rgba(20,20,24,.85); backdrop-filter: blur(20px); transition: opacity .3s; }
 .ep-drawer h4 { margin: 0 0 10px; }
+.win .top { padding-right: 150px; }

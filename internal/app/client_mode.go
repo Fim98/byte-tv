@@ -180,9 +180,9 @@ func spaFileServer(directory string) http.Handler {
 	})
 }
 
-// RunClient 以客户端模式提供服务。stdout 输出一行 JUKU_CLIENT_READY 供 Electron 解析端口。
+// RunClient 以客户端模式提供服务（仅 127.0.0.1）。stdout 输出一行 JUKU_CLIENT_READY 供 Electron 解析端口。
 // 标准输入关闭（父进程退出/崩溃）或收到 SIGTERM 时优雅退出，避免孤儿进程。
-func (a *UIApp) RunClient(uiDir string, watchStdin bool) error {
+func (a *UIApp) RunClient(uiDir string, watchStdin bool, preferredPort int) error {
 	token := strings.TrimSpace(os.Getenv(clientTokenEnv))
 	if len(token) < 32 {
 		return fmt.Errorf("客户端模式需要环境变量 %s（至少 32 个字符）", clientTokenEnv)
@@ -202,9 +202,16 @@ func (a *UIApp) RunClient(uiDir string, watchStdin bool) error {
 		}
 		fmt.Printf("FFmpeg 已就绪：%s\n", path)
 	}()
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return err
+	// 优先复用上次端口，保证页面 origin 稳定（localStorage 等按 origin 保存）；被占用则随机端口。
+	var listener net.Listener
+	var err error
+	if preferredPort > 1024 && preferredPort < 65536 {
+		listener, err = net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", preferredPort))
+	}
+	if listener == nil {
+		if listener, err = net.Listen("tcp", "127.0.0.1:0"); err != nil {
+			return err
+		}
 	}
 	port := listener.Addr().(*net.TCPAddr).Port
 	if uiDir != "" {

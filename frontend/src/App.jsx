@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Bell, ChevronLeft, ChevronRight, Clock, Compass, Download, Heart, Home as HomeIcon, RefreshCw, Search, Settings as SettingsIcon, Trophy } from "lucide-react"
-import { apiGet, initViewer } from "./api"
+import { apiGet, initViewer, native } from "./api"
 import { navigate, useRoute } from "./router"
 import { setToastHandler, toast } from "./components/common"
 import { setPlayerOpener } from "./actions"
@@ -145,7 +145,7 @@ export default function App() {
   }
   const ff = status?.ffmpeg
   return (
-    <div className="shell">
+    <div className={`shell ${native?.platform === "win32" ? "win" : ""}`}>
       <aside className="side">
         <div className="drag traffic" />
         <div className="brand"><span className="logo">果</span>果果剧库</div>

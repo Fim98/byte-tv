@@ -142,6 +142,7 @@ func Run() {
 	flag.Var(&insecureTLS, "insecure-tls", "skip TLS certificate verification")
 	clientMode := flag.Bool("client", false, "run as the Electron client backend on 127.0.0.1 with a random port")
 	clientUI := flag.String("client-ui", "", "client mode: directory of the built React frontend")
+	clientPort := flag.Int("client-port", 0, "client mode: preferred loopback port (falls back to a random port)")
 	clientWatchStdin := flag.Bool("client-watch-stdin", true, "client mode: exit when stdin closes (parent process gone)")
 	help := flag.Bool("help", false, "show help")
 	flag.Parse()
@@ -243,7 +244,7 @@ func Run() {
 	if *uiMode {
 		ui := NewUIApp(d)
 		if *clientMode {
-			if err := ui.RunClient(*clientUI, *clientWatchStdin); err != nil {
+			if err := ui.RunClient(*clientUI, *clientWatchStdin, *clientPort); err != nil {
 				d.recordDiagnostic(diagnosticEvent{Event: "app.failed", Message: err.Error()})
 				fmt.Fprintf(os.Stderr, "客户端后端停止: %v\n", publicError(err))
 				os.Exit(1)
