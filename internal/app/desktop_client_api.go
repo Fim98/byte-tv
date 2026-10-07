@@ -200,7 +200,7 @@ func episodeNumberFromString(value string, fallback int) int {
 	return number
 }
 
-// handleDesktopHome 首页聚合：继续观看、追剧（含新集数）、本地已下载、剧库精选与状态。
+// handleDesktopHome（GET /api/desktop/home[?full=1]）首页聚合：继续观看、追剧（含新集数）、本地已下载、剧库精选与状态。
 // 只读本地数据，不访问网络；榜单与分类推荐仍由前端调用 /api/ui/rankings、/api/ui/recommendations。
 func (a *UIApp) handleDesktopHome(writer http.ResponseWriter, request *http.Request) {
 	if !playbackRequestAllowed(writer, request, http.MethodGet) {
@@ -258,12 +258,14 @@ func (a *UIApp) handleDesktopHome(writer http.ResponseWriter, request *http.Requ
 		}
 		return a.desktopCardLocked(drama, localIDs[id])
 	}
+	// full=1：返回完整观看历史（含已看完），供“观看历史”页使用；默认只返回 20 条未看完的“继续观看”。
+	full := request.URL.Query().Get("full") == "1"
 	continueWatching := make([]continueItem, 0)
 	for _, entry := range history {
-		if len(continueWatching) >= 20 {
+		if !full && len(continueWatching) >= 20 {
 			break
 		}
-		if entry.Completed && entry.Index >= entry.Total || !dramaAllowed(ctx, entry.DramaID, entry.Source) {
+		if !full && entry.Completed && entry.Index >= entry.Total || !dramaAllowed(ctx, entry.DramaID, entry.Source) {
 			continue
 		}
 		continueWatching = append(continueWatching, continueItem{desktopDramaCard: cardFor(entry.DramaID, entry.Source, entry.Title), Episode: entry.Episode, Index: entry.Index, Total: entry.Total, Position: entry.Position, Duration: entry.Duration, Completed: entry.Completed, Mode: entry.Mode, WatchedAt: entry.WatchedAt})

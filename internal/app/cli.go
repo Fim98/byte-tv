@@ -165,9 +165,18 @@ func Run() {
 	}
 
 	if *clientMode {
+		// 先把相对路径转成绝对路径，下面会切换工作目录到用户数据目录。
+		if *clientUI != "" {
+			if abs, err := filepath.Abs(*clientUI); err == nil {
+				*clientUI = abs
+			}
+		}
 		explicit := ""
 		if flagWasSet("data-dir") {
 			explicit = *dataDir
+			if abs, err := filepath.Abs(explicit); err == nil {
+				explicit = abs
+			}
 		}
 		directory, firstOutput, err := prepareClientDirectories(explicit)
 		if err != nil {

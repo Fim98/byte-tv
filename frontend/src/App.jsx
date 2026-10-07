@@ -1,232 +1,201 @@
-import { useEffect, useRef, useState } from "react"
-import { apiGet, apiPost, initViewer } from "./api"
-import Player from "./Player"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { ScrollArea } from "@/components/ui/scroll-area"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { Bell, ChevronLeft, ChevronRight, Clock, Compass, Download, Heart, Home as HomeIcon, RefreshCw, Search, Settings as SettingsIcon, Trophy } from "lucide-react"
+import { apiGet, initViewer } from "./api"
+import { navigate, useRoute } from "./router"
+import { setToastHandler, toast } from "./components/common"
+import { setPlayerOpener } from "./actions"
+import Home from "./pages/Home"
+import Browse from "./pages/Browse"
+import Rankings from "./pages/Rankings"
+import Detail from "./pages/Detail"
+import Following from "./pages/Following"
+import Downloads from "./pages/Downloads"
+import Settings from "./pages/Settings"
+import Onboarding from "./pages/Onboarding"
+import Player from "./pages/Player"
 
-const pageSize = 60
+const NAV = [
+  ["发现", [["/home", "首页", HomeIcon], ["/browse", "分类", Compass], ["/rankings", "榜单", Trophy]]],
+  ["我的", [["/following", "追剧", Heart], ["/history", "观看历史", Clock], ["/downloads", "下载管理", Download]]],
+]
 
-function formatPosition(value) {
-  if (!Number.isFinite(value) || value < 0) return "0:00"
-  const total = Math.floor(value)
-  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`
+function SearchBox() {
+  const [text, setText] = useState("")
+  const [items, setItems] = useState([])
+  const [open, setOpen] = useState(false)
+  const [active, setActive] = useState(-1)
+  const composing = useRef(false)
+  const input = useRef(null)
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "f")) {
+        e.preventDefault()
+        input.current?.focus()
+      }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [])
+  useEffect(() => {
+    const q = text.trim()
+    if (!q || composing.current) return setItems([])
+    const controller = new AbortController()
+    const timer = setTimeout(() => {
+      apiGet(`/api/ui/search/suggestions?q=${encodeURIComponent(q)}`, { signal: controller.signal })
+        .then((r) => setItems((r.data || []).slice(0, 10)))
+        .catch(() => {})
+    }, 300)
+    return () => { clearTimeout(timer); controller.abort() }
+  }, [text])
+  const submit = (q) => {
+    const value = (q ?? text).trim()
+    if (!value) return
+    setOpen(false)
+    navigate(`/browse?q=${encodeURIComponent(value)}`)
+  }
+  return (
+    <div className="search">
+      <Search size={15} />
+      <input
+        ref={input}
+        value={text}
+        placeholder="搜索剧名、简介或标签，回车联网搜索红果"
+        onChange={(e) => { setText(e.target.value); setOpen(true); setActive(-1) }}
+        onCompositionStart={() => (composing.current = true)}
+        onCompositionEnd={(e) => { composing.current = false; setText(e.currentTarget.value) }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onKeyDown={(e) => {
+          if (composing.current) return
+          if (e.key === "ArrowDown") { e.preventDefault(); setActive((a) => Math.min(items.length - 1, a + 1)) }
+          else if (e.key === "ArrowUp") { e.preventDefault(); setActive((a) => Math.max(-1, a - 1)) }
+          else if (e.key === "Enter") {
+            const item = items[active]
+            submit(item?.name)
+          } else if (e.key === "Escape") { setOpen(false); e.currentTarget.blur() }
+        }}
+      />
+      <kbd>⌘K</kbd>
+      {open && items.length > 0 ? (
+        <ul className="suggest">
+          {items.map((item, i) => (
+            <li key={(item.name || "") + i} className={i === active ? "on" : ""} onMouseDown={() => submit(item.name)}>
+              {item.name || item.title}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  )
 }
 
 export default function App() {
-  const [view, setView] = useState("library")
-  const [query, setQuery] = useState("")
-  const [dramas, setDramas] = useState([])
-  const [visible, setVisible] = useState(pageSize)
-  const [detail, setDetail] = useState(null)
-  const [history, setHistory] = useState([])
-  const [following, setFollowing] = useState([])
-  const [opened, setOpened] = useState(null)
-  const [error, setError] = useState("")
-  const [loading, setLoading] = useState(false)
-  const catalogRequest = useRef(0)
+  const route = useRoute()
+  const [ready, setReady] = useState(false)
+  const [fatal, setFatal] = useState(null)
+  const [status, setStatus] = useState(null)
+  const [player, setPlayer] = useState(null)
+  const [toasts, setToasts] = useState([])
+  const [notices, setNotices] = useState([])
+  const [onboarding, setOnboarding] = useState(() => localStorage.getItem("juku.onboarded") !== "1")
 
   useEffect(() => {
-    let stopped = false
-    initViewer()
-      .then(() => loadCatalog(""))
-      .catch((err) => {
-        if (!stopped) setError(err.message || "无法连接剧库")
-      })
-    return () => {
-      stopped = true
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setToastHandler((message, kind) => {
+      const id = Math.random()
+      setToasts((t) => [...t, { id, message, kind }])
+      setNotices((n) => [{ id, message, kind, at: new Date() }, ...n].slice(0, 50))
+      setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3500)
+    })
+    setPlayerOpener((request) => setPlayer(request))
+    initViewer().then(() => setReady(true)).catch(setFatal)
   }, [])
 
-  async function loadCatalog(nextQuery) {
-    const requestID = ++catalogRequest.current
-    setLoading(true)
+  const refreshStatus = useCallback(() => apiGet("/api/desktop/status").then(setStatus).catch(() => {}), [])
+  useEffect(() => {
+    if (!ready) return
+    refreshStatus()
+    const timer = setInterval(refreshStatus, 10000)
+    return () => clearInterval(timer)
+  }, [ready, refreshStatus])
+
+  const checkNew = async () => {
     try {
-      const path = nextQuery ? `/api/desktop/catalog?q=${encodeURIComponent(nextQuery)}` : "/api/desktop/catalog"
-      const result = await apiGet(path)
-      if (requestID !== catalogRequest.current) return
-      setDramas(result.data || [])
-      setVisible(pageSize)
-      setError("")
-    } catch (err) {
-      if (requestID === catalogRequest.current) setError(err.message || "剧库加载失败")
-    } finally {
-      if (requestID === catalogRequest.current) setLoading(false)
+      const r = await apiGet("/api/ui/dramas?update=1&source=hongguo")
+      toast(r.updateAccepted === false ? "剧库正在更新中" : "已开始检查新内容", "ok")
+    } catch (e) {
+      toast(e.message, "error")
     }
   }
 
-  async function openDetail(id) {
-    setLoading(true)
-    setView("detail")
-    try {
-      const [drama, saved] = await Promise.all([
-        apiGet(`/api/desktop/drama?id=${encodeURIComponent(id)}`),
-        apiGet("/api/ui/following"),
-      ])
-      const followed = (saved.data || []).some((item) => item.dramaId === id && item.saved)
-      setDetail({ ...drama, followed })
-      setError("")
-    } catch (err) {
-      setError(err.message || "无法打开短剧")
-    } finally {
-      setLoading(false)
-    }
+  if (fatal) return <div className="fatal"><h1>果果剧库无法启动</h1><p>{fatal.message}</p><button className="btn" onClick={() => location.reload()}>重新加载</button></div>
+  if (!ready) return <div className="fatal"><p>正在连接本机服务…</p></div>
+  if (onboarding) return <Onboarding onDone={() => { localStorage.setItem("juku.onboarded", "1"); setOnboarding(false) }} />
+
+  const [page] = route.parts
+  let content
+  switch (page) {
+    case "browse": content = <Browse route={route} />; break
+    case "rankings": content = <Rankings route={route} />; break
+    case "drama": content = <Detail id={decodeURIComponent(route.parts[1] || "")} route={route} />; break
+    case "following": content = <Following tab="following" />; break
+    case "history": content = <Following tab="history" />; break
+    case "downloads": content = <Downloads status={status} />; break
+    case "settings": content = <Settings section={route.parts[1]} status={status} onChanged={refreshStatus} />; break
+    default: content = <Home />
   }
-
-  async function openPlayback(body) {
-    setLoading(true)
-    try {
-      const result = await apiPost("/api/ui/playback/open", body)
-      setOpened(result)
-      setView("player")
-      setError("")
-    } catch (err) {
-      setError(err.message || "无法开始播放")
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  async function toggleFollow() {
-    if (!detail?.drama?.id) return
-    const saved = !detail.followed
-    const result = await apiPost("/api/ui/following", { dramaId: detail.drama.id, saved })
-    if (result.ok) setDetail({ ...detail, followed: saved })
-  }
-
-  async function showHistory() {
-    setView("history")
-    const result = await apiGet("/api/ui/playback/history")
-    setHistory(result.data || [])
-  }
-
-  async function showFollowing() {
-    setView("following")
-    const result = await apiGet("/api/ui/following")
-    setFollowing((result.data || []).filter((item) => item.saved))
-  }
-
-  const shown = dramas.slice(0, visible)
-
+  const ff = status?.ffmpeg
   return (
-    <main className="flex h-screen flex-col">
-      <header className="flex items-center gap-3 border-b px-4 py-3">
-        <h1 className="text-xl font-semibold">剧库</h1>
-        <Button variant={view === "library" || view === "detail" ? "default" : "ghost"} onClick={() => { setView("library"); loadCatalog(query) }}>剧库</Button>
-        <Button variant={view === "history" ? "default" : "ghost"} onClick={showHistory}>继续观看</Button>
-        <Button variant={view === "following" ? "default" : "ghost"} onClick={showFollowing}>追剧</Button>
-        <div className="ml-auto w-full max-w-sm">
-          <Input
-            value={query}
-            placeholder="搜索剧名"
-            aria-label="搜索剧名"
-            onChange={(event) => {
-              const value = event.target.value
-              setQuery(value)
-              setView("library")
-              loadCatalog(value.trim())
-            }}
-          />
+    <div className="shell">
+      <aside className="side">
+        <div className="drag traffic" />
+        <div className="brand"><span className="logo">果</span>果果剧库</div>
+        {NAV.map(([group, items]) => (
+          <nav key={group}>
+            <div className="group">{group}</div>
+            {items.map(([path, label, Icon]) => (
+              <a key={path} href={`#${path}`} className={route.path.startsWith(path) ? "on" : ""}>
+                <Icon size={16} />{label}
+                {path === "/downloads" && status?.activeDownloads ? <span className="count red">{status.activeDownloads}</span> : null}
+              </a>
+            ))}
+          </nav>
+        ))}
+        <nav><a href="#/settings" className={route.path.startsWith("/settings") ? "on" : ""}><SettingsIcon size={16} />设置</a></nav>
+        <div className="grow" />
+        <div className="side-status">
+          <div><i className="dot green" />红果站源</div>
+          <div><i className={`dot ${ff?.status === "ready" ? "green" : ff?.status === "failed" ? "red" : "amber"}`} />FFmpeg {ff?.status === "ready" ? "已就绪" : ff?.status === "failed" ? "准备失败" : "准备中"}</div>
+          <div className="muted">剧库 {status?.library?.total ?? 0} 部</div>
         </div>
-      </header>
-      {error ? <p className="px-4 pt-3 text-sm text-primary">{error}</p> : null}
-      <div className="min-h-0 flex-1 p-4">
-        {view === "player" && opened ? (
-          <Player opened={opened} onClose={() => { setOpened(null); setView("library") }} />
-        ) : null}
-        {view === "detail" && detail?.drama ? (
-          <div className="grid gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
-            <Card>
-              {detail.drama.cover ? <img src={detail.drama.cover} alt="" className="aspect-[3/4] w-full object-cover" /> : <div className="aspect-[3/4] bg-muted" />}
-              <CardHeader>
-                <CardTitle>{detail.drama.title}</CardTitle>
-              </CardHeader>
-              <CardContent className="flex flex-col gap-2">
-                {detail.drama.category ? <Badge>{detail.drama.category}</Badge> : null}
-                <Button variant={detail.followed ? "secondary" : "default"} onClick={toggleFollow}>{detail.followed ? "已追剧" : "追剧"}</Button>
-                {detail.episodes?.length ? null : (
-                  <Button onClick={() => openPlayback({ dramaId: detail.drama.id })}>在线播放</Button>
-                )}
-              </CardContent>
-            </Card>
-            <ScrollArea className="h-[calc(100vh-8rem)] rounded-lg border">
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-2 p-3">
-                {(detail.episodes || []).map((episode) => (
-                  <Button key={episode.taskId || episode.index} variant="secondary" onClick={() => openPlayback({ taskId: episode.taskId })}>
-                    {episode.title || `第${episode.episode}集`}
-                  </Button>
-                ))}
-                {!detail.episodes?.length ? <p className="text-sm text-muted-foreground">本地还没有完成的分集，可以在线播放。</p> : null}
-              </div>
-            </ScrollArea>
-          </div>
-        ) : null}
-        {view === "history" ? (
-          <ScrollArea className="h-full">
-            <div className="grid gap-3">
-              {history.length === 0 ? <p className="text-sm text-muted-foreground">还没有观看记录。</p> : null}
-              {history.map((item) => (
-                <Card key={item.dramaId}>
-                  <CardHeader>
-                    <CardTitle>{item.title}</CardTitle>
-                  </CardHeader>
-                  <CardContent className="flex items-center justify-between gap-3">
-                    <p className="text-sm text-muted-foreground">第{item.episode}集 · {formatPosition(item.position)}</p>
-                    <Button onClick={() => openPlayback({ dramaId: item.dramaId, resume: true, fromHistory: true })}>继续观看</Button>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </ScrollArea>
-        ) : null}
-        {view === "following" ? (
-          <ScrollArea className="h-full">
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {following.length === 0 ? <p className="text-sm text-muted-foreground">还没有追剧。</p> : null}
-              {following.map((item) => (
-                <Card key={item.dramaId}>
-                  <CardHeader>
-                    <CardTitle>{item.title}</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <Button onClick={() => openDetail(item.dramaId)}>打开</Button>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </ScrollArea>
-        ) : null}
-        {view === "library" ? (
-          <ScrollArea className="h-full">
-            {loading && dramas.length === 0 ? <p className="text-sm text-muted-foreground">正在读取剧库…</p> : null}
-            {!loading && dramas.length === 0 ? <p className="text-sm text-muted-foreground">没有找到短剧。</p> : null}
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-3">
-              {shown.map((drama) => (
-                <Card key={drama.id} className="cursor-pointer overflow-hidden" onClick={() => openDetail(drama.id)}>
-                  {drama.cover ? (
-                    <img src={drama.cover} alt="" className="aspect-[3/4] w-full object-cover" />
-                  ) : (
-                    <div className="aspect-[3/4] bg-muted" />
-                  )}
-                  <CardHeader>
-                    <CardTitle className="line-clamp-2 text-sm">{drama.title}</CardTitle>
-                  </CardHeader>
-                  <CardContent className="flex gap-2">
-                    {drama.local ? <Badge>本地</Badge> : null}
-                    {drama.totalEpisode ? <Badge variant="outline">{drama.totalEpisode}集</Badge> : null}
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-            {visible < dramas.length ? (
-              <Button className="mt-4" variant="secondary" onClick={() => setVisible((count) => count + pageSize)}>加载更多</Button>
-            ) : null}
-          </ScrollArea>
-        ) : null}
-      </div>
-    </main>
+      </aside>
+      <main className="main">
+        <header className="top drag">
+          <button className="icon-btn no-drag" onClick={() => history.back()}><ChevronLeft size={16} /></button>
+          <button className="icon-btn no-drag" onClick={() => history.forward()}><ChevronRight size={16} /></button>
+          <div className="no-drag"><SearchBox /></div>
+          <span className="grow" />
+          <button className="pill no-drag" onClick={checkNew}><RefreshCw size={14} />检查新内容</button>
+          <NoticeBell notices={notices} />
+        </header>
+        <div className="page" key={route.path}>{content}</div>
+      </main>
+      {player ? <Player request={player} onClose={() => setPlayer(null)} /> : null}
+      <div className="toasts">{toasts.map((t) => <div key={t.id} className={`toast ${t.kind}`}>{t.message}</div>)}</div>
+    </div>
+  )
+}
+
+function NoticeBell({ notices }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="no-drag bell">
+      <button className="icon-btn" onClick={() => setOpen(!open)}><Bell size={16} />{notices.length ? <i className="badge-dot" /> : null}</button>
+      {open ? (
+        <div className="notice-panel">
+          <h4>通知</h4>
+          {notices.length === 0 ? <p className="muted">暂无通知</p> : notices.map((n) => <p key={n.id} className={n.kind}>{n.message}<small>{n.at.toLocaleTimeString()}</small></p>)}
+        </div>
+      ) : null}
+    </div>
   )
 }
