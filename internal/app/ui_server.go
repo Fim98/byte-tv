@@ -72,6 +72,7 @@ type UIApp struct {
 	parsingInFlight       map[string]bool
 	parsingCancels        map[string]context.CancelFunc
 	closed                bool
+	clientMode            bool
 	workerCount           int
 	activeDownloads       int
 	settingsMu            sync.Mutex
@@ -270,6 +271,9 @@ func (a *UIApp) routes() http.Handler {
 	mux.HandleFunc("/api/ui/dramas", a.handleDramas)
 	mux.HandleFunc("/api/desktop/catalog", a.handleDesktopCatalog)
 	mux.HandleFunc("/api/desktop/drama", a.handleDesktopDrama)
+	mux.HandleFunc("/api/desktop/episodes", a.handleDesktopEpisodes)
+	mux.HandleFunc("/api/desktop/home", a.handleDesktopHome)
+	mux.HandleFunc("/api/desktop/status", a.handleDesktopStatus)
 	mux.HandleFunc("/api/ui/dramas/cancel", a.handleLibraryCancel)
 	mux.HandleFunc("/api/ui/categories", a.handleCategories)
 	mux.HandleFunc("/api/ui/cover/repair", a.handleCoverRepair)

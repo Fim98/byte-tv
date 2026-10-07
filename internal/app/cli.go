@@ -90,6 +90,8 @@ func usage() {
 
 常用参数：
   -ui=true|false               启动观看界面，默认 true。桌面版打开窗口，不再打开系统浏览器
+  -client                     客户端模式（Electron 子进程）：仅监听 127.0.0.1 随机端口，需 JUKU_CLIENT_TOKEN
+  -client-ui 目录             客户端模式下的 React 前端构建目录
   -http=true|false             改用旧的本地 HTTP 页面，默认 false
   -listen 地址                HTTP 模式监听地址，默认 0.0.0.0:8999
   -open=true|false            HTTP 模式是否自动打开系统浏览器，默认 true
@@ -138,6 +140,9 @@ func Run() {
 	more := flag.Bool("more", false, "continue loading the Hongguo App catalog from its saved cursor")
 	var insecureTLS boolOverride
 	flag.Var(&insecureTLS, "insecure-tls", "skip TLS certificate verification")
+	clientMode := flag.Bool("client", false, "run as the Electron client backend on 127.0.0.1 with a random port")
+	clientUI := flag.String("client-ui", "", "client mode: directory of the built React frontend")
+	clientWatchStdin := flag.Bool("client-watch-stdin", true, "client mode: exit when stdin closes (parent process gone)")
 	help := flag.Bool("help", false, "show help")
 	flag.Parse()
 	if *help {
@@ -159,7 +164,22 @@ func Run() {
 		os.Exit(2)
 	}
 
-	if !flagWasSet("data-dir") && !flagWasSet("config") {
+	if *clientMode {
+		explicit := ""
+		if flagWasSet("data-dir") {
+			explicit = *dataDir
+		}
+		directory, firstOutput, err := prepareClientDirectories(explicit)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "初始化用户数据目录失败:", err)
+			os.Exit(1)
+		}
+		*dataDir = directory
+		if *out == "" && firstOutput != "" && os.Getenv("JUKU_OUTPUT_DIR") == "" {
+			*out = firstOutput
+		}
+		fmt.Printf("数据目录: %s\n", directory)
+	} else if !flagWasSet("data-dir") && !flagWasSet("config") {
 		if err := preparePortableWorkingDirectory(); err != nil {
 			fmt.Fprintln(os.Stderr, "初始化程序目录失败:", err)
 			os.Exit(1)
@@ -213,6 +233,14 @@ func Run() {
 
 	if *uiMode {
 		ui := NewUIApp(d)
+		if *clientMode {
+			if err := ui.RunClient(*clientUI, *clientWatchStdin); err != nil {
+				d.recordDiagnostic(diagnosticEvent{Event: "app.failed", Message: err.Error()})
+				fmt.Fprintf(os.Stderr, "客户端后端停止: %v\n", publicError(err))
+				os.Exit(1)
+			}
+			return
+		}
 		if LaunchDesktop != nil && !*httpMode {
 			fmt.Println("正在打开果果剧库窗口")
 			if err := ui.PrepareDesktop(); err != nil {

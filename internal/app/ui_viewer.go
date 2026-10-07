@@ -218,7 +218,7 @@ func writeViewerError(writer http.ResponseWriter, status int, code, message stri
 func (app *UIApp) withBrowserViewer(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		path := request.URL.Path
-		if path != "/api/ui/following" && path != "/api/ui/preferences" && !strings.HasPrefix(path, "/api/ui/sync/") && !strings.HasPrefix(path, "/api/ui/playback/") && !strings.HasPrefix(path, "/api/ui/account/") && path != "/api/ui/viewer/legacy" && !accountAdminPath(path) {
+		if path != "/api/ui/following" && path != "/api/desktop/episodes" && path != "/api/desktop/home" && path != "/api/ui/preferences" && !strings.HasPrefix(path, "/api/ui/sync/") && !strings.HasPrefix(path, "/api/ui/playback/") && !strings.HasPrefix(path, "/api/ui/account/") && path != "/api/ui/viewer/legacy" && !accountAdminPath(path) {
 			next.ServeHTTP(writer, request)
 			return
 		}
@@ -319,6 +319,10 @@ func (app *UIApp) prepareBrowserViewers() error {
 	}
 	if err := manager.accountStore().err; err != nil {
 		return err
+	}
+	if app.clientMode {
+		// 客户端模式：本机所有者直接拥有全部权限，不创建/打印管理员密码。
+		return nil
 	}
 	admin, err := manager.ensureAdministrator(app.cfg)
 	if err != nil {

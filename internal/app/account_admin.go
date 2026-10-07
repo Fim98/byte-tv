@@ -155,6 +155,15 @@ func (app *UIApp) withAccountAccess(next http.Handler) http.Handler {
 			next.ServeHTTP(writer, request)
 			return
 		}
+		if isClientOwner(request.Context()) {
+			// 本机所有者：视为管理员，不受“必须登录 / 仅在线观看 / 首次改密”限制；
+			// 写操作仍要求 X-Juku-Viewer 头（CSRF 防护）。
+			account.Admin = true
+			account.OnlineOnly = false
+			account.RequirePasswordChange = false
+			requireLogin = false
+			cookiePresent = false
+		}
 		if cookiePresent && account.ID == "" && !accountAdminPath(path) {
 			writeViewerError(writer, http.StatusUnauthorized, "viewer_required", "账号登录已失效，请重新登录或继续匿名使用")
 			return
