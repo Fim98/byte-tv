@@ -1,0 +1,143 @@
+package app
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strconv"
+	"sync"
+	"time"
+)
+
+const rankingCacheTTL = 5 * time.Minute
+
+type rankingBoard struct {
+	ID          string `json:"id"`
+	Source      string `json:"source"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	path        string
+	upstreamKey string
+}
+
+var rankingBoards = []rankingBoard{
+	{ID: "hongguo-hot", Source: sourceHongguo, Name: "总热播榜", Description: "红果观看、互动等综合热度；每日更新。", path: "hot-drama", upstreamKey: "hongguo"},
+	{ID: "hongguo-real", Source: sourceHongguo, Name: "真人剧榜", Description: "红果真人剧热播榜；每日更新。", path: "hot-real-drama", upstreamKey: "real"},
+	{ID: "hongguo-comic", Source: sourceHongguo, Name: "漫剧榜", Description: "红果漫剧热播榜；每日更新。", path: "hot-comic-drama", upstreamKey: "comic"},
+	{ID: "hongguo-ai", Source: sourceHongguo, Name: "AI剧榜", Description: "红果 AI 剧热播榜；每日更新。", path: "hot-ai-drama", upstreamKey: "ai"},
+}
+
+type rankingItem struct {
+	Rank   int    `json:"rank"`
+	Drama  Drama  `json:"drama"`
+	Metric string `json:"metric,omitempty"`
+}
+
+type rankingPage struct {
+	BoardID     string        `json:"boardId"`
+	Page        int           `json:"page"`
+	Items       []rankingItem `json:"items"`
+	HasMore     bool          `json:"hasMore"`
+	TotalPages  int           `json:"totalPages,omitempty"`
+	UpdatedText string        `json:"updatedText,omitempty"`
+	FetchedAt   time.Time     `json:"fetchedAt"`
+	Stale       bool          `json:"stale,omitempty"`
+	Warning     string        `json:"warning,omitempty"`
+}
+
+type rankingCall struct {
+	done chan struct{}
+	page rankingPage
+	err  error
+}
+
+type rankingCache struct {
+	mu      sync.Mutex
+	pages   map[string]rankingPage
+	pending map[string]*rankingCall
+	loaded  bool
+}
+
+func findRankingBoard(id string) (rankingBoard, bool) {
+	for _, board := range rankingBoards {
+		if board.ID == id {
+			return board, true
+		}
+	}
+	return rankingBoard{}, false
+}
+
+func cloneRankingPage(page rankingPage) rankingPage {
+	page.Items = append([]rankingItem{}, page.Items...)
+	return page
+}
+
+func (d *Downloader) loadRankingPage(ctx context.Context, board rankingBoard, page int, refresh bool) (rankingPage, error) {
+	key := board.ID + ":" + strconv.Itoa(page)
+	cache := &d.rankings
+	cache.mu.Lock()
+	d.restoreRankingCacheLocked(cache)
+	cached, exists := cache.pages[key]
+	if exists && !refresh && time.Since(cached.FetchedAt) >= 0 && time.Since(cached.FetchedAt) < rankingCacheTTL {
+		cache.mu.Unlock()
+		return cloneRankingPage(cached), nil
+	}
+	if pending := cache.pending[key]; pending != nil {
+		cache.mu.Unlock()
+		select {
+		case <-ctx.Done():
+			return rankingPage{}, ctx.Err()
+		case <-pending.done:
+			if (errors.Is(pending.err, context.Canceled) || errors.Is(pending.err, context.DeadlineExceeded)) && ctx.Err() == nil {
+				return d.loadRankingPage(ctx, board, page, refresh)
+			}
+			return cloneRankingPage(pending.page), pending.err
+		}
+	}
+	pending := &rankingCall{done: make(chan struct{})}
+	cache.pending[key] = pending
+	cache.mu.Unlock()
+
+	result, err := d.fetchRankingPage(ctx, board, page)
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+	if err == nil {
+		result.BoardID, result.Page, result.FetchedAt = board.ID, page, time.Now()
+		if refresh && page == 1 {
+			for cachedKey, old := range cache.pages {
+				if old.BoardID == board.ID {
+					delete(cache.pages, cachedKey)
+				}
+			}
+		}
+		if len(cache.pages) >= 128 {
+			oldestKey, oldest := "", time.Now()
+			for cachedKey, old := range cache.pages {
+				if old.FetchedAt.Before(oldest) {
+					oldestKey, oldest = cachedKey, old.FetchedAt
+				}
+			}
+			delete(cache.pages, oldestKey)
+		}
+		cache.pages[key] = cloneRankingPage(result)
+		d.saveRankingCacheLocked(cache)
+	} else if exists && ctx.Err() == nil && time.Since(cached.FetchedAt) >= 0 && time.Since(cached.FetchedAt) < 24*time.Hour {
+		result = cloneRankingPage(cached)
+		result.Stale = true
+		result.Warning = "站点暂不可用，显示上次取得的榜单，请稍后刷新。"
+		err = nil
+	}
+	pending.page, pending.err = cloneRankingPage(result), err
+	delete(cache.pending, key)
+	close(pending.done)
+	return result, err
+}
+
+func (d *Downloader) fetchRankingPage(ctx context.Context, board rankingBoard, page int) (rankingPage, error) {
+	switch board.Source {
+	case sourceHongguo:
+		return d.fetchHongguoRankingPage(ctx, board, page)
+	default:
+		return rankingPage{}, fmt.Errorf("不支持的榜单站源 %s", board.Source)
+	}
+}

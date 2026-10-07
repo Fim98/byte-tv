@@ -1,0 +1,9 @@
+frontend/node_modules/
+frontend/dist/
+electron/node_modules/
+electron/dist/
+electron/resources/bin/
+/data/
+/短剧下载/
+/build/
+*.log
