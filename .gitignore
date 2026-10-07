@@ -8,3 +8,6 @@ electron/resources/bin/
 /build/
 *.log
 /ByteTV Downloads/
+cmd/bytetv/ui/*
+!cmd/bytetv/ui/.gitkeep
+/bin/
