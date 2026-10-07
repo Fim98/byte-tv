@@ -165,12 +165,19 @@ type clientServer struct {
 	token string
 	uiDir string
 	port  int
+	// mediaToken 仅用于只读播放路径的 ?bt= 查询参数。
+	mediaToken string
 }
 
 func (server *clientServer) authorized(request *http.Request) bool {
 	candidates := []string{request.Header.Get("X-Juku-Token")}
 	if cookie, err := request.Cookie(clientTokenCookie); err == nil {
 		candidates = append(candidates, cookie.Value)
+	}
+	if server.mediaToken != "" && mediaPath(request) {
+		if bt := request.URL.Query().Get("bt"); bt != "" && subtle.ConstantTimeCompare([]byte(bt), []byte(server.mediaToken)) == 1 {
+			return true
+		}
 	}
 	for _, candidate := range candidates {
 		if candidate != "" && subtle.ConstantTimeCompare([]byte(candidate), []byte(server.token)) == 1 {
@@ -191,6 +198,8 @@ func (server *clientServer) handler() http.Handler {
 	var static http.Handler
 	if server.uiDir != "" {
 		static = spaFileServer(server.uiDir)
+	} else if ClientUIFS != nil {
+		static = spaFSServer(ClientUIFS)
 	}
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if !server.hostAllowed(request.Host) {
@@ -213,6 +222,14 @@ func (server *clientServer) handler() http.Handler {
 		}
 		if request.URL.Path == "/api/desktop/health" {
 			writeJSON(writer, http.StatusOK, map[string]any{"ok": true, "pid": os.Getpid()})
+			return
+		}
+		if request.URL.Path == "/api/desktop/prefs" {
+			server.handlePrefs(writer, request)
+			return
+		}
+		if strings.HasPrefix(request.URL.Path, "/api/desktop/native/") {
+			server.handleNative(writer, request)
 			return
 		}
 		if static != nil && !strings.HasPrefix(request.URL.Path, "/api/") {
@@ -267,6 +284,9 @@ func (a *UIApp) RunClient(uiDir string, watchStdin bool, preferredPort int) erro
 	// 优先复用上次端口，保证页面 origin 稳定（localStorage 等按 origin 保存）；被占用则随机端口。
 	var listener net.Listener
 	var err error
+	if preferredPort == 0 {
+		preferredPort = rememberedClientPort(a.cfg.dataDirectory())
+	}
 	if preferredPort > 1024 && preferredPort < 65536 {
 		listener, err = net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", preferredPort))
 	}
@@ -276,6 +296,7 @@ func (a *UIApp) RunClient(uiDir string, watchStdin bool, preferredPort int) erro
 		}
 	}
 	port := listener.Addr().(*net.TCPAddr).Port
+	rememberClientPort(a.cfg.dataDirectory(), port)
 	if uiDir != "" {
 		if abs, absErr := filepath.Abs(uiDir); absErr == nil {
 			uiDir = abs
@@ -285,14 +306,23 @@ func (a *UIApp) RunClient(uiDir string, watchStdin bool, preferredPort int) erro
 			uiDir = ""
 		}
 	}
-	server := &clientServer{ui: a, token: token, uiDir: uiDir, port: port}
+	server := &clientServer{ui: a, token: token, uiDir: uiDir, port: port, mediaToken: mediaToken(token)}
+	currentClientMu.Lock()
+	currentClient = a
+	currentClientMu.Unlock()
 	a.mu.Lock()
 	a.address = listener.Addr().String()
 	a.mu.Unlock()
 	httpServer := &http.Server{Handler: server.handler(), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 120 * time.Second}
 	done := make(chan error, 1)
-	go func() { done <- httpServer.Serve(listener) }()
+	go func() {
+		defer recoverAndLog("http server")
+		done <- httpServer.Serve(listener)
+	}()
 	fmt.Printf("JUKU_CLIENT_READY port=%d pid=%d\n", port, os.Getpid())
+	if host := getClientHost(); host != nil {
+		host.ClientReady(port, fmt.Sprintf("http://127.0.0.1:%d/?token=%s", port, token))
+	}
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
@@ -312,6 +342,7 @@ func (a *UIApp) RunClient(uiDir string, watchStdin bool, preferredPort int) erro
 	select {
 	case err = <-done:
 	case <-stop:
+	case <-clientStop:
 	case <-parentGone:
 		fmt.Println("父进程已退出，后端正在关闭")
 	}
