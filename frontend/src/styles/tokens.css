@@ -1,0 +1,95 @@
+/* Byte TV 设计 token：取自 design-app/index.html（深色为默认，[data-theme="light"] 为浅色）。 */
+:root{
+  --c-stage:#08080A;
+  --c-base:#050508;
+  --c-panel:#0D0D12;
+  --s-1:rgba(255,255,255,.045);
+  --s-2:rgba(255,255,255,.06);
+  --s-3:rgba(255,255,255,.07);
+  --s-4:rgba(255,255,255,.08);
+  --s-5:rgba(255,255,255,.12);
+  --s-6:rgba(255,255,255,.16);
+  --l-1:rgba(255,255,255,.10);
+  --l-2:rgba(255,255,255,.18);
+  --t-1:#FFFFFF;
+  --t-2:#C9C9D4;
+  --t-3:#A6A6B2;
+  --t-4:#8A8A98;
+  --t-5:#7A7A86;
+  --t-6:#E8E8EE;
+  --c-brand:#FF5C36;
+  --c-brand-t:#FF8A6B;
+  --brand-soft:rgba(255,92,54,.16);
+  --c-success:#33D499;
+  --c-success-t:#34D399;
+  --success-soft:rgba(51,212,153,.12);
+  --c-warn-t:#FBBF24;
+  --c-danger:#FA7085;
+  --c-danger-t:#FB7185;
+  --danger-soft:rgba(250,112,133,.14);
+  --c-warm:#FFB347;
+  --track:rgba(255,255,255,.14);
+  --track-2:rgba(255,255,255,.16);
+  --track-3:rgba(255,255,255,.22);
+  --sw-off-knob:rgba(255,255,255,.55);
+  --nav-active-bg:rgba(255,255,255,.10);
+  --nav-active-fg:#FFFFFF;
+  --nav-idle:#A6A6B3;
+}
+[data-theme="light"]{
+  --c-stage:#DEDEE3;
+  --c-base:#F2F2F5;
+  --c-panel:#FFFFFF;
+  --s-1:rgba(0,0,0,.035);
+  --s-2:rgba(0,0,0,.04);
+  --s-3:rgba(0,0,0,.04);
+  --s-4:rgba(0,0,0,.05);
+  --s-5:rgba(0,0,0,.07);
+  --s-6:rgba(0,0,0,.09);
+  --l-1:rgba(0,0,0,.08);
+  --l-2:rgba(0,0,0,.14);
+  --t-1:#121214;
+  --t-2:#55555E;
+  --t-3:#6B6B75;
+  --t-4:#75757F;
+  --t-5:#8A8A93;
+  --t-6:#2A2A32;
+  --c-brand:#FF5C36;
+  --c-brand-t:#D93F1B;
+  --brand-soft:rgba(232,71,33,.12);
+  --c-success-t:#12A26E;
+  --success-soft:rgba(51,212,153,.18);
+  --c-warn-t:#B7791F;
+  --c-danger-t:#E11D48;
+  --danger-soft:rgba(250,112,133,.16);
+  --c-warm:#C7801A;
+  --track:rgba(0,0,0,.10);
+  --track-2:rgba(0,0,0,.12);
+  --track-3:rgba(0,0,0,.18);
+  --sw-off-knob:rgba(0,0,0,.28);
+  --nav-active-bg:rgba(232,71,33,.10);
+  --nav-active-fg:#E84721;
+  --nav-idle:#6B6B75;
+}
+:root{
+  /* 字体 */
+  --font-ui:"Noto Sans SC","PingFang SC","Hiragino Sans GB","Microsoft YaHei",-apple-system,system-ui,sans-serif;
+  --font-num:"Inter","SF Pro Display",-apple-system,system-ui,sans-serif;
+  /* 字号 */
+  --fs-hero:40px; --fs-page:30px; --fs-sec:20px; --fs-brand:17px; --fs-lg:16px; --fs-md:14px; --fs-sm:13px; --fs-xs:12px; --fs-2xs:11px;
+  /* 间距 */
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px; --sp-6:24px; --sp-7:32px;
+  --side-w:232px; --top-h:72px; --page-x:32px;
+  /* 圆角 */
+  --r-sm:9px; --r-md:12px; --r-lg:14px; --r-xl:16px; --r-2xl:20px; --r-3xl:24px; --r-pill:999px;
+  /* 阴影 */
+  --sh-poster:0 16px 40px -6px rgba(0,0,0,.55);
+  --sh-pop:0 24px 60px -12px rgba(0,0,0,.6);
+  --sh-brand:0 6px 16px rgba(255,92,54,.35);
+  /* 动效 */
+  --ease:cubic-bezier(.2,.7,.2,1); --dur:.16s; --dur-slow:.3s;
+  /* 播放器（固定深色，与主题无关） */
+  --pl-pill:rgba(255,255,255,.10); --pl-drawer:rgba(13,13,18,.78); --pl-buffer:rgba(255,255,255,.38);
+  color-scheme:dark;
+}
+[data-theme="light"]{ color-scheme:light; --sh-poster:0 16px 40px -10px rgba(0,0,0,.25); --sh-pop:0 24px 60px -16px rgba(0,0,0,.25); }
