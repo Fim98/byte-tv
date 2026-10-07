@@ -41,8 +41,8 @@ var (
 	currentClientMu sync.RWMutex
 	currentClient   *UIApp
 
-	eventsMu   sync.Mutex
-	eventSubs  = map[chan string]struct{}{}
+	eventsMu  sync.Mutex
+	eventSubs = map[chan string]struct{}{}
 )
 
 // SetClientHost 注册桌面外壳。
