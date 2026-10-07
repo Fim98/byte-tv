@@ -1,8 +1,8 @@
 {
-  "name": "guoguo-juku",
-  "productName": "果果剧库",
+  "name": "bytetv",
+  "productName": "Byte TV",
   "version": "1.1.0",
-  "description": "果果剧库桌面客户端（Electron 壳 + Go 后端子进程）",
+  "description": "Byte TV 桌面客户端（Electron 壳 + Go 后端子进程）",
   "main": "main.js",
   "private": true,
   "scripts": {
@@ -22,9 +22,9 @@
     "electron-builder": "^25.1.8"
   },
   "build": {
-    "appId": "com.guoguo.juku",
-    "productName": "果果剧库",
-    "artifactName": "GuoguoJuku-${version}-${os}-${arch}.${ext}",
+    "appId": "com.bytetv.app",
+    "productName": "Byte TV",
+    "artifactName": "ByteTV-${version}-${os}-${arch}.${ext}",
     "directories": {
       "output": "dist",
       "buildResources": "build"

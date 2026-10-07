@@ -1,13 +1,33 @@
-// 果果剧库 Electron 主进程：启动 Go 后端子进程（127.0.0.1 随机端口 + 令牌），窗口通过 HTTP 加载前端。
+// Byte TV Electron 主进程：启动 Go 后端子进程（127.0.0.1 随机端口 + 令牌），窗口通过 HTTP 加载前端。
 const { app, BrowserWindow, Menu, Notification, Tray, dialog, ipcMain, nativeImage, powerSaveBlocker, session, shell } = require("electron")
 const fs = require("node:fs")
 const path = require("node:path")
 const { Backend, resolveBackendBinary, resolveUiDir } = require("./backend")
 
-const APP_NAME = "果果剧库"
-// Electron 自身数据放子目录，避免与 Go 后端数据（同一“果果剧库”目录根部）混在一起。
+const APP_NAME = "Byte TV"
+// 数据目录名不含空格和中文，与 Go 后端 clientAppName 保持一致。
+const DATA_DIR_NAME = "ByteTV"
+const LEGACY_DATA_DIR_NAME = "果果剧库"
+
+// 改名迁移：必须在 setPath/任何写入之前完成，否则新目录会先被 Electron 创建，导致后端跳过迁移。
+function migrateLegacyDataDir() {
+  const appData = app.getPath("appData")
+  const target = path.join(appData, DATA_DIR_NAME)
+  const legacy = path.join(appData, LEGACY_DATA_DIR_NAME)
+  try {
+    if (!fs.existsSync(target) && fs.statSync(legacy, { throwIfNoEntry: false })?.isDirectory()) {
+      fs.renameSync(legacy, target)
+      console.log(`[migrate] ${legacy} -> ${target}`)
+    }
+  } catch (error) {
+    console.error("[migrate] 迁移旧数据目录失败：", error)
+  }
+}
+migrateLegacyDataDir()
+
+// Electron 自身数据放子目录，避免与 Go 后端数据（同一 ByteTV 目录根部）混在一起。
 app.setName(APP_NAME)
-app.setPath("userData", path.join(app.getPath("appData"), APP_NAME, "Shell"))
+app.setPath("userData", path.join(app.getPath("appData"), DATA_DIR_NAME, "Shell"))
 
 const settingsFile = () => path.join(app.getPath("userData"), "shell-settings.json")
 function readSettings() {
@@ -118,7 +138,7 @@ function navigate(hash) {
 function buildMenu() {
   const isMac = process.platform === "darwin"
   const template = [
-    ...(isMac ? [{ label: APP_NAME, submenu: [{ role: "about", label: `关于${APP_NAME}` }, { type: "separator" }, { label: "设置…", accelerator: "Cmd+,", click: () => navigate("/settings") }, { type: "separator" }, { role: "hide", label: "隐藏" }, { role: "hideOthers" }, { type: "separator" }, { label: "退出", accelerator: "Cmd+Q", click: () => requestQuit() }] }] : []),
+    ...(isMac ? [{ label: APP_NAME, submenu: [{ role: "about", label: `关于 ${APP_NAME}` }, { type: "separator" }, { label: "设置…", accelerator: "Cmd+,", click: () => navigate("/settings") }, { type: "separator" }, { role: "hide", label: "隐藏" }, { role: "hideOthers" }, { type: "separator" }, { label: "退出", accelerator: "Cmd+Q", click: () => requestQuit() }] }] : []),
     { label: "文件", submenu: [...(!isMac ? [{ label: "设置", accelerator: "Ctrl+,", click: () => navigate("/settings") }, { label: "退出", click: () => requestQuit() }] : [{ role: "close", label: "关闭窗口" }])] },
     { label: "编辑", submenu: [{ role: "undo" }, { role: "redo" }, { type: "separator" }, { role: "cut" }, { role: "copy" }, { role: "paste" }, { role: "selectAll" }] },
     { label: "前往", submenu: [
