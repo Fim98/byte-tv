@@ -3,9 +3,10 @@ import Hls from "hls.js"
 import { ChevronLeft, ListVideo, Maximize, MessageSquare, Pause, PictureInPicture2, Play, SkipForward, Volume2, VolumeX } from "lucide-react"
 import { apiGet, apiPost, native } from "../api"
 import { formatTime } from "../lib/format"
+import { PLAYER_RATES, applyPlayerPrefs, getPlayerPrefs, setPlayerPrefs } from "../lib/playerPrefs"
 
 // 播放器：完整复用 /api/ui/playback/* 协议（open → plan / hls/open → progress / control / danmaku / prefetch）。
-const RATES = [0.75, 1, 1.25, 1.5, 2, 3]
+const RATES = PLAYER_RATES
 
 function capabilities(video) {
   const mse = typeof window.MediaSource !== "undefined"
@@ -36,9 +37,12 @@ export default function Player({ request, onClose }) {
   const [status, setStatus] = useState("正在准备播放")
   const [error, setError] = useState("")
   const [source, setSource] = useState("")
-  const [rate, setRate] = useState(1)
-  const [muted, setMuted] = useState(false)
-  const [volume, setVolume] = useState(1)
+  const [rate, setRate] = useState(() => getPlayerPrefs().rate)
+  const [muted, setMuted] = useState(() => getPlayerPrefs().muted)
+  const [volume, setVolume] = useState(() => getPlayerPrefs().volume)
+  const boostRef = useRef(false)
+  const holdTimerRef = useRef(null) // 长按 → 计时器放 ref，避免播放中频繁重渲染时被清掉
+  const apply = () => applyPlayerPrefs(videoRef.current, { boost: boostRef.current })
   const [drawer, setDrawer] = useState(true)
   const [danmakuOn, setDanmakuOn] = useState(() => localStorage.getItem("juku.danmaku") !== "0")
   const [danmaku, setDanmaku] = useState([])
@@ -46,7 +50,7 @@ export default function Player({ request, onClose }) {
   const [idle, setIdle] = useState(false)
   const [boost, setBoost] = useState(false)
   const [qualities, setQualities] = useState([])
-  const [quality, setQuality] = useState(0)
+  const [quality, setQuality] = useState(0) // 本集实际画质；用户偏好在 playerPrefs.quality
   const episodes = opened?.episodes || []
 
   const post = useCallback((path, body) => apiPost(path, { session: sessionRef.current, ...body }), [])
@@ -78,7 +82,7 @@ export default function Player({ request, onClose }) {
       if (version !== versionRef.current) return
       if (Number.isFinite(video.duration)) setDuration(video.duration)
       if (offset > 0) video.currentTime = offset
-      video.playbackRate = rate
+      applyPlayerPrefs(video, { boost: boostRef.current })
       setStatus(shouldPlay ? "正在播放" : "已暂停，点击继续")
       if (shouldPlay) video.play().catch(() => setStatus("已就绪，点击播放"))
     }
@@ -94,14 +98,17 @@ export default function Player({ request, onClose }) {
       })
       hls.loadSource(url)
       hls.attachMedia(video)
+      hls.on(Hls.Events.MEDIA_ATTACHED, () => applyPlayerPrefs(video, { boost: boostRef.current }))
+      applyPlayerPrefs(video, { boost: boostRef.current })
       return
     }
     video.addEventListener("loadedmetadata", start, { once: true })
     video.src = url
     video.load()
+    applyPlayerPrefs(video, { boost: boostRef.current })
   }
 
-  const playEpisode = useCallback(async (nextIndex, offset = 0, shouldPlay = true, nextQuality = quality) => {
+  const playEpisode = useCallback(async (nextIndex, offset = 0, shouldPlay = true, nextQuality = getPlayerPrefs().quality) => {
     const version = ++versionRef.current
     await saveProgress(false)
     indexRef.current = nextIndex
@@ -133,7 +140,7 @@ export default function Player({ request, onClose }) {
       if (version === versionRef.current) setError(err.message || "播放失败")
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [opened, quality, saveProgress, post, episodes.length])
+  }, [opened, saveProgress, post, episodes.length])
 
   // 打开会话
   useEffect(() => {
@@ -200,20 +207,22 @@ export default function Player({ request, onClose }) {
 
   const toggle = () => { const v = videoRef.current; if (!v) return; v.paused ? v.play().catch(() => {}) : v.pause() }
   const seekBy = (s) => { const v = videoRef.current; if (v) v.currentTime = Math.max(0, Math.min((v.duration || 0) - 0.1, v.currentTime + s)) }
-  const setPlaybackRate = (r) => { setRate(r); if (videoRef.current) videoRef.current.playbackRate = r }
+  const setPlaybackRate = (r) => { setPlayerPrefs({ rate: r }); setRate(r); apply() }
+  const changeVolume = (v) => { v = Math.round(Math.min(1, Math.max(0, v)) * 100) / 100; setPlayerPrefs({ volume: v, muted: v === 0 ? true : false }); setVolume(v); setMuted(v === 0); apply() }
+  const toggleMuted = () => { const m = !getPlayerPrefs().muted; setPlayerPrefs({ muted: m }); setMuted(m); apply() }
   const fullscreen = () => { if (native?.toggleFullScreen) native.toggleFullScreen(); else if (document.fullscreenElement) document.exitFullscreen(); else rootRef.current?.requestFullscreen?.() }
 
   // 键盘
   useEffect(() => {
-    let holdTimer = null
     const down = (e) => {
-      if (e.target.tagName === "INPUT") return
+      if (e.target.tagName === "INPUT" && e.target.type !== "range" && e.target.type !== "checkbox") return
+      if (e.target.tagName === "SELECT" && e.key.startsWith("Arrow")) e.target.blur()
       const k = e.key
       if (k === " ") { e.preventDefault(); toggle() }
-      else if (k === "ArrowRight") { e.preventDefault(); if (!e.repeat) { holdTimer = setTimeout(() => { setBoost(true); if (videoRef.current) videoRef.current.playbackRate = 3 }, 400) } }
+      else if (k === "ArrowRight") { e.preventDefault(); if (!e.repeat) { holdTimerRef.current = setTimeout(() => { boostRef.current = true; setBoost(true); apply() }, 400) } }
       else if (k === "ArrowLeft") seekBy(-5)
-      else if (k === "ArrowUp") { e.preventDefault(); const v = Math.min(1, volume + 0.1); setVolume(v); if (videoRef.current) videoRef.current.volume = v }
-      else if (k === "ArrowDown") { e.preventDefault(); const v = Math.max(0, volume - 0.1); setVolume(v); if (videoRef.current) videoRef.current.volume = v }
+      else if (k === "ArrowUp") { e.preventDefault(); changeVolume(getPlayerPrefs().volume + 0.1) }
+      else if (k === "ArrowDown") { e.preventDefault(); changeVolume(getPlayerPrefs().volume - 0.1) }
       else if (k === "f" || k === "F") fullscreen()
       else if (k === "n" || k === "N") index < episodes.length && playEpisode(index + 1)
       else if (k === "p" || k === "P") index > 1 && playEpisode(index - 1)
@@ -224,12 +233,12 @@ export default function Player({ request, onClose }) {
     }
     const up = (e) => {
       if (e.key !== "ArrowRight") return
-      clearTimeout(holdTimer)
-      if (boost) { setBoost(false); if (videoRef.current) videoRef.current.playbackRate = rate } else seekBy(5)
+      clearTimeout(holdTimerRef.current)
+      if (boostRef.current) { boostRef.current = false; setBoost(false); apply() } else seekBy(5) // 松开恢复用户选择的倍速
     }
     window.addEventListener("keydown", down)
     window.addEventListener("keyup", up)
-    return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); clearTimeout(holdTimer) }
+    return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up) } // 不在此清除长按计时器：每次重渲染都会重新绑定
   })
 
   // 3 秒无操作隐藏控制条
@@ -257,10 +266,14 @@ export default function Player({ request, onClose }) {
         <video
           ref={videoRef}
           playsInline
+          onLoadStart={apply}
+          onLoadedMetadata={apply}
+          onDurationChange={apply}
+          onRateChange={(e) => { const want = boostRef.current ? 3 : getPlayerPrefs().rate; if (e.currentTarget.playbackRate !== want) apply() }}
           onPlay={() => { setPlaying(true); setStatus("正在播放") }}
           onPause={() => { setPlaying(false); saveProgress(false) }}
           onWaiting={() => setStatus("缓冲中…")}
-          onPlaying={() => setStatus("正在播放")}
+          onPlaying={() => { apply(); setStatus("正在播放") }}
           onTimeUpdate={(e) => {
             const v = e.currentTarget
             setPosition(v.currentTime || 0)
@@ -289,12 +302,12 @@ export default function Player({ request, onClose }) {
           <button className="icon-btn" onClick={toggle}>{playing ? <Pause size={18} /> : <Play size={18} />}</button>
           <button className="icon-btn" disabled={index >= episodes.length} onClick={() => playEpisode(index + 1)}><SkipForward size={18} /></button>
           <span className="time">{formatTime(position)} / {formatTime(duration)}</span>
-          <button className="icon-btn" onClick={() => { const m = !muted; setMuted(m); if (videoRef.current) videoRef.current.muted = m }}>{muted ? <VolumeX size={18} /> : <Volume2 size={18} />}</button>
-          <input className="vol" type="range" min={0} max={1} step={0.05} value={volume} onChange={(e) => { const v = Number(e.target.value); setVolume(v); if (videoRef.current) videoRef.current.volume = v }} />
+          <button className="icon-btn" onClick={toggleMuted}>{muted ? <VolumeX size={18} /> : <Volume2 size={18} />}</button>
+          <input className="vol" type="range" min={0} max={1} step={0.05} value={volume} onChange={(e) => changeVolume(Number(e.target.value))} />
           <span className="grow" />
           <button className={`icon-btn ${danmakuOn ? "on" : ""}`} title="弹幕 (D)" onClick={() => setDanmakuOn(!danmakuOn)}><MessageSquare size={17} /></button>
-          <select value={rate} onChange={(e) => setPlaybackRate(Number(e.target.value))}>{RATES.map((r) => <option key={r} value={r}>{r}×</option>)}</select>
-          {qualities.length > 1 ? <select value={quality} onChange={(e) => { const q = Number(e.target.value); setQuality(q); playEpisode(index, position, playing, q) }}>{qualities.map((q) => <option key={q.value} value={q.value}>{q.label}</option>)}</select> : null}
+          <select value={rate} onChange={(e) => { setPlaybackRate(Number(e.target.value)); e.target.blur() }}>{RATES.map((r) => <option key={r} value={r}>{r}×</option>)}</select>
+          {qualities.length > 1 ? <select value={quality} onChange={(e) => { e.target.blur(); const q = Number(e.target.value); setPlayerPrefs({ quality: q }); setQuality(q); playEpisode(index, position, playing, q) }}>{qualities.map((q) => <option key={q.value} value={q.value}>{q.label}</option>)}</select> : null}
           <label className="auto-next"><input type="checkbox" checked={autoNext} onChange={(e) => setAutoNext(e.target.checked)} />自动下一集</label>
           {document.pictureInPictureEnabled ? <button className="icon-btn" onClick={() => videoRef.current?.requestPictureInPicture().catch(() => {})}><PictureInPicture2 size={17} /></button> : null}
           <button className={`icon-btn ${drawer ? "on" : ""}`} onClick={() => setDrawer(!drawer)}><ListVideo size={17} /></button>
