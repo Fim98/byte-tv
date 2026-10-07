@@ -110,6 +110,12 @@ func (s *shell) Native(action string, body json.RawMessage) (any, error) {
 	case "notify":
 		s.sendNotification(str("title"), str("body"))
 		return true, nil
+	case "log":
+		if os.Getenv("BYTETV_AUTOTEST_JS") == "" {
+			return nil, fmt.Errorf("log 仅用于自动化测试")
+		}
+		fmt.Println("AUTOTEST", string(body))
+		return true, nil
 	case "quit":
 		s.app.Quit()
 		return true, nil
@@ -177,6 +183,7 @@ func (s *shell) run() {
 		MinWidth:         1024,
 		MinHeight:        680,
 		URL:              s.url,
+		JS:               autotestJS(),
 		BackgroundColour: application.NewRGB(10, 10, 12),
 		Mac: application.MacWindow{
 			TitleBar: application.MacTitleBarHiddenInset,
