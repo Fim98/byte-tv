@@ -29,7 +29,7 @@ var (
 	updateURL = ""
 )
 
-const appID = "com.bytetv.desktop"
+const appID = "com.bytetv.app" // 与 Electron 版 appId 一致
 
 func dataDirectory() string {
 	if dir := os.Getenv("BYTETV_DATA"); dir != "" {
@@ -52,8 +52,15 @@ func randomToken() string {
 }
 
 func main() {
-	if len(os.Args) > 2 && os.Args[1] == "-gen-icon" {
-		if err := os.WriteFile(os.Args[2], appIconPNG(1024), 0o644); err != nil {
+	// 打包脚本用：生成 PNG / ICO 图标，免在仓库里放二进制素材。
+	if len(os.Args) > 3 && os.Args[1] == "-gen-icon" {
+		var size int
+		fmt.Sscan(os.Args[2], &size)
+		data := appIconPNG(size)
+		if filepath.Ext(os.Args[3]) == ".ico" {
+			data = icoFromPNG(appIconPNG(256))
+		}
+		if err := os.WriteFile(os.Args[3], data, 0o644); err != nil {
 			log.Fatal(err)
 		}
 		return

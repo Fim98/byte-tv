@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/base64"
+	"encoding/binary"
 	"image"
 	"image/color"
 	"image/png"
@@ -37,9 +38,9 @@ func appIconPNG(size int) []byte {
 				continue
 			}
 			t := (fx + fy) / (2 * s)
-			r := lerp(255, 168, t)
-			g := lerp(64, 32, t)
-			b := lerp(96, 220, t)
+			r := lerp(255, 240, t)
+			g := lerp(118, 58, t)
+			b := lerp(66, 78, t)
 			if inTriangle(fx, fy, s*0.40, s*0.30, s*0.40, s*0.70, s*0.72, s*0.50) {
 				r, g, b = 255, 255, 255
 			}
@@ -86,4 +87,15 @@ func inTriangle(px, py, ax, ay, bx, by, cx, cy float64) bool {
 	neg := d1 < 0 || d2 < 0 || d3 < 0
 	pos := d1 > 0 || d2 > 0 || d3 > 0
 	return !(neg && pos)
+}
+
+// icoFromPNG 把 256px PNG 包成单图 ICO（Windows Vista+ 支持 PNG 压缩的 ICO 条目）。
+func icoFromPNG(pngData []byte) []byte {
+	var buf bytes.Buffer
+	_ = binary.Write(&buf, binary.LittleEndian, []uint16{0, 1, 1})
+	buf.Write([]byte{0, 0, 0, 0}) // 宽高 0 表示 256，调色板 0，保留 0
+	_ = binary.Write(&buf, binary.LittleEndian, []uint16{1, 32})
+	_ = binary.Write(&buf, binary.LittleEndian, []uint32{uint32(len(pngData)), 22})
+	buf.Write(pngData)
+	return buf.Bytes()
 }

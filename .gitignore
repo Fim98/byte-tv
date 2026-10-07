@@ -11,3 +11,4 @@ electron/resources/bin/
 cmd/bytetv/ui/*
 !cmd/bytetv/ui/.gitkeep
 /bin/
+packaging/windows/icon.ico

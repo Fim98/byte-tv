@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- 原生 Go 二进制，无需 Electron 的 JIT 例外；仅保留网络与用户选择目录读写 -->
+  <key>com.apple.security.network.client</key><true/>
+  <key>com.apple.security.network.server</key><true/>
+  <key>com.apple.security.files.user-selected.read-write</key><true/>
+</dict>
+</plist>

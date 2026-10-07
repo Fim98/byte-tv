@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key><string>Byte TV</string>
+  <key>CFBundleDisplayName</key><string>Byte TV</string>
+  <key>CFBundleIdentifier</key><string>com.bytetv.app</string>
+  <key>CFBundleExecutable</key><string>bytetv</string>
+  <key>CFBundleIconFile</key><string>icon</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>__VERSION__</string>
+  <key>CFBundleVersion</key><string>__VERSION__</string>
+  <key>LSMinimumSystemVersion</key><string>11.0</string>
+  <key>LSApplicationCategoryType</key><string>public.app-category.entertainment</string>
+  <key>NSHighResolutionCapable</key><true/>
+  <key>NSSupportsAutomaticGraphicsSwitching</key><true/>
+  <key>NSHumanReadableCopyright</key><string>Byte TV</string>
+  <!-- 页面加载 http://127.0.0.1:端口，需要放行本机明文 HTTP -->
+  <key>NSAppTransportSecurity</key>
+  <dict>
+    <key>NSAllowsLocalNetworking</key><true/>
+    <key>NSExceptionDomains</key>
+    <dict>
+      <key>127.0.0.1</key>
+      <dict><key>NSExceptionAllowsInsecureHTTPLoads</key><true/></dict>
+    </dict>
+  </dict>
+</dict>
+</plist>
