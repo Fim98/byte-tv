@@ -163,3 +163,14 @@ PoC 已实现：
 | **合计** | | **约 9–13 人日** |
 
 建议的第一个里程碑：先完成第 1、2 步的最小版本，在 mac 真机上跑通**播放回归**（即第 4 步的播放部分）。这一步大约 4 天，用来确认第 2 节的 Cookie 和全屏风险，再决定是否继续投入。
+
+## 迁移状态（2026-10-07，分支 `wails3`）
+
+已按本文方案完成迁移，Electron 目录保留作回退：
+
+- 外壳：`cmd/bytetv`（Wails v3 `v3.0.0-beta.28`，Go 1.25），同进程运行后端；`internal/app/client_embed.go` 提供外壳钩子（`SetClientHost`、`ClientUIFS` 嵌入前端、`StopClient`、`ClientActivity`、`ClientEmit` SSE 事件、`desktop_prefs.json`、端口记忆 `client_port`、媒体令牌 `?bt=`、panic 恢复）。
+- 页面无法使用 Wails 绑定（页面来自 `http://127.0.0.1:端口`，`WebviewWindow.ExecJS` 也会因运行时未加载而一直排队），原生能力统一走 `/api/desktop/native/*`，导航事件走 SSE `/api/desktop/native/events`。
+- 播放：桌面外壳内有 MSE 时 HLS 强制 hls.js；原生 `<video>` 直连地址附带只读媒体令牌（仅 GET/HEAD 播放、媒体路径有效）。
+- 打包：`Taskfile.yml`、`scripts/desktop/*.sh`、`packaging/`。
+- Linux/xvfb 实测：hls.js（`blob:` 源）播放竖屏剧 1080×1920，6 秒内 currentTime 前进 6 秒；菜单“前往 → 下载”经 SSE 导航成功；端口复用与后端偏好持久化生效。
+- 待 macOS / Windows 真机确认：见 README“Byte TV 桌面客户端”与提交说明。

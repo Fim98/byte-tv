@@ -381,6 +381,55 @@ bash scripts/build.sh
 
 构建脚本生成 macOS Intel / Apple Silicon、Linux amd64、Windows amd64 四个平台程序；Windows 的 `scripts\build.bat` 只构建 Windows x64。前端无需额外构建步骤，修改页面后必须重新编译程序。
 
+## Byte TV 桌面客户端
+
+`cmd/bytetv` 是 Byte TV 桌面客户端（Wails v3，锁定 `v3.0.0-beta.28`，需要 Go 1.25）。同一个进程里运行上面的 Go 后端（客户端模式：只监听 `127.0.0.1`，优先复用上次端口，启动令牌换成 HttpOnly Cookie），窗口直接加载本机地址，视频与接口都不经过 Wails 自定义协议。服务器版、Docker 与原 Wails v2 桌面窗口（根目录 `desktop_wails.go`）不受影响；`electron/` 保留作回退，不再是默认外壳。
+
+| 项目 | 位置 |
+| --- | --- |
+| 数据目录 | macOS `~/Library/Application Support/ByteTV`，Windows `%APPDATA%\ByteTV`（与 Electron 版相同；首次启动迁移旧的“果果剧库”目录），可用 `BYTETV_DATA` 覆盖 |
+| 默认下载目录 | `~/ByteTV`（不可写时 `ByteTV Downloads`） |
+| 桌面偏好 | 数据目录下 `desktop_prefs.json`（主题、播放倍速/音量/画质、引导、关闭到托盘等），端口变化也不丢 |
+| 崩溃日志 | 数据目录 `logs/crash-*.log`、`logs/app.log` |
+
+原生能力：菜单栏/托盘（显示窗口、下载任务、退出，托盘提示进行中任务数）、关闭窗口留在后台（设置里可关）、单实例、下载或合并进行中退出前确认、`⌘/Ctrl+1–4` 前往首页/浏览/追剧/下载、`⌘/Ctrl+,` 设置、任务全部完成时系统通知、任务进行中阻止系统空闲睡眠（macOS IOPMAssertion / Windows SetThreadExecutionState）、选择下载目录、在访达/资源管理器中显示、原生全屏回退、自动更新（构建时注入更新源）、后台 panic 恢复与 30 秒健康看门狗。页面通过 `/api/desktop/native/*` 调用这些能力（`frontend/src/lib/desktop.js` 装配成与 Electron preload 相同的 `window.juku`）；桌面外壳内有 MSE 时 HLS 一律走 hls.js，原生 `<video>` 直连的地址附带只读媒体令牌，避免 macOS 原生 HLS 不带 Cookie。
+
+### 开发与运行（macOS）
+
+```bash
+brew install go node            # Go ≥ 1.25（或任意 Go，配合 GOTOOLCHAIN=go1.25.0+auto 自动下载）
+xcode-select --install          # cgo / WebKit 需要 Command Line Tools
+brew install go-task            # 可选，Taskfile 只是 scripts/desktop/*.sh 的封装
+go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.28   # 可选，wails3 doctor 检查环境
+
+cd frontend && npm ci && cd ..
+task dev        # 或 bash scripts/desktop/dev.sh：使用 frontend/dist，菜单含开发者工具
+task build      # 或 bash scripts/desktop/build.sh → bin/bytetv（前端嵌入二进制）
+./bin/bytetv
+```
+
+Linux 只用于开发和 CI：需要 `libgtk-3-dev libwebkit2gtk-4.1-dev` 与 GStreamer（`gstreamer1.0-plugins-good/bad gstreamer1.0-libav`），以 `-tags gtk3` 构建（脚本已处理）。不带该标签时 `go build ./...` 会因缺少 GTK4 在 `cmd/bytetv` 处失败，其它包不受影响。
+
+### 打包
+
+```bash
+# macOS universal（arm64 + x86_64）：bin/Byte TV.app 与 bin/ByteTV-<版本>-universal.dmg
+VERSION=1.1.0 task package:mac
+# 正式分发：Developer ID 签名 + 公证（二选一提供公证凭据）
+MAC_SIGN_IDENTITY="Developer ID Application: 名称 (TEAMID)" NOTARY_PROFILE=bytetv task package:mac
+MAC_SIGN_IDENTITY="..." APPLE_ID=me@example.com APPLE_TEAM_ID=TEAMID APPLE_APP_PASSWORD=xxxx-xxxx task package:mac
+
+# Windows amd64 / arm64：bytetv-<arch>.exe 与 NSIS 安装包（内置 WebView2 Evergreen Bootstrapper，缺失时静默安装）
+# 可在 Windows（Git Bash）或 macOS/Linux 交叉编译，需要 makensis（brew install makensis）
+task package:windows
+```
+
+未设置 `MAC_SIGN_IDENTITY` 时做 ad-hoc 签名，只适合本机。自动更新默认关闭，打包时设置 `BYTETV_UPDATE_URL`（Wails updater endpoint manifest，可用 `{{platform}}`/`{{arch}}` 占位）和 `BYTETV_UPDATE_PUBKEY`（ed25519 公钥 base64）启用。迁移背景与能力对照见 [docs/wails-migration-eval.md](docs/wails-migration-eval.md)。
+
+### Electron 回退
+
+`electron/` 目录保持原样（`cd electron && npm ci && npm run dev`，打包 `npm run dist:mac` / `npm run dist:win`），后端兼容两种外壳：Electron 以子进程方式运行同一后端并通过 preload 注入 `window.juku`。
+
 ## 常见问题
 
 | 问题 | 当前处理与排查方法 |
