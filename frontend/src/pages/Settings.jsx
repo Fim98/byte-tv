@@ -115,7 +115,7 @@ export default function Settings({ section = "", status, onChanged }) {
         return (
           <>
             <Item title="版本">{version || "开发版"}</Item>
-            <Item title="检查更新" desc="Electron 自动更新（electron-updater，需配置发布地址）"><button className="btn ghost sm" disabled={!native?.checkForUpdates} onClick={() => native.checkForUpdates().then((r) => toast(r?.message || "已检查", "ok")).catch((e) => toast(e.message, "error"))}>检查更新</button></Item>
+            <Item title="检查更新" desc={native?.shell === "wails" ? "Wails 自动更新（构建时配置更新源）" : "Electron 自动更新（electron-updater，需配置发布地址）"}><button className="btn ghost sm" disabled={!native?.checkForUpdates} onClick={() => native.checkForUpdates().then((r) => toast(r?.message || "已检查", "ok")).catch((e) => toast(e.message, "error"))}>检查更新</button></Item>
             <Item title="重新运行首次引导"><button className="btn ghost sm" onClick={() => { localStorage.removeItem("juku.onboarded"); location.reload() }}>运行</button></Item>
           </>
         )

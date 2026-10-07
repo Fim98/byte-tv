@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import Hls from "hls.js"
 import { ChevronLeft, Maximize, Pause, PictureInPicture2, Play, SkipBack, SkipForward, Volume2, VolumeX, X } from "lucide-react"
 import { apiGet, apiPost, native } from "../api"
+import { isDesktopShell, withMediaToken } from "../lib/desktop"
 import { formatTime } from "../lib/format"
 import { PLAYER_RATES, applyPlayerPrefs, getPlayerPrefs, setPlayerPrefs } from "../lib/playerPrefs"
 
@@ -14,7 +15,7 @@ function capabilities(video) {
   const codecs = ["h264"]
   if (can('video/mp4; codecs="hvc1.1.6.L93.B0"') || can('video/mp4; codecs="hev1.1.6.L93.B0"')) codecs.push("hevc")
   if (can('video/mp4; codecs="av01.0.05M.08"')) codecs.push("av1")
-  return { mp4: true, nativeHls: video.canPlayType("application/vnd.apple.mpegurl") !== "", hlsjs: Hls.isSupported(), video: codecs, audio: ["aac", "mp3", "opus"] }
+  return { mp4: true, nativeHls: !(isDesktopShell() && Hls.isSupported()) && video.canPlayType("application/vnd.apple.mpegurl") !== "", hlsjs: Hls.isSupported(), video: codecs, audio: ["aac", "mp3", "opus"] }
 }
 
 export default function Player({ request, onClose }) {
@@ -89,7 +90,8 @@ export default function Player({ request, onClose }) {
       if (shouldPlay) video.play().catch(() => setStatus("已就绪，点击播放"))
     }
     clearMedia()
-    if (playlist && !video.canPlayType("application/vnd.apple.mpegurl") && Hls.isSupported()) {
+    // 桌面外壳里有 MSE 时一律用 hls.js：WKWebView 原生 HLS 走 AVFoundation，请求不带 Cookie 会 401。
+    if (playlist && (isDesktopShell() || !video.canPlayType("application/vnd.apple.mpegurl")) && Hls.isSupported()) {
       const hls = new Hls({ maxBufferLength: 30, backBufferLength: 60, fragLoadingMaxRetry: 6, manifestLoadingMaxRetry: 4, xhrSetup: (xhr) => { xhr.withCredentials = true } })
       hlsRef.current = hls
       hls.on(Hls.Events.MANIFEST_PARSED, start)
@@ -105,7 +107,7 @@ export default function Player({ request, onClose }) {
       return
     }
     video.addEventListener("loadedmetadata", start, { once: true })
-    video.src = url
+    video.src = withMediaToken(url)
     video.load()
     applyPlayerPrefs(video, { boost: boostRef.current })
   }

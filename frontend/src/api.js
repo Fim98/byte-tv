@@ -49,5 +49,6 @@ export async function apiPost(path, body, { signal } = {}) {
   )
 }
 
-// Electron preload 暴露的原生能力；在普通浏览器中为 undefined，调用方需降级。
-export const native = typeof window !== "undefined" ? window.juku : undefined
+// 原生能力：Electron preload 或 Wails 外壳兼容层（lib/desktop.js）注入的 window.juku。
+// 用代理按需读取，兼容层在启动时异步装配；普通浏览器中各成员为 undefined，调用方需降级。
+export const native = typeof window !== "undefined" ? new Proxy({}, { get: (_, key) => window.juku?.[key] }) : undefined
