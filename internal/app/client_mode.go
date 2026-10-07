@@ -53,6 +53,10 @@ func clientDataDirectory() (string, error) {
 
 // clientDefaultOutputDirectory 返回“影片 / 视频”目录下的默认下载位置。
 func clientDefaultOutputDirectory() string {
+	return clientOutputDirectoryNamed(clientAppName)
+}
+
+func clientOutputDirectoryNamed(clientAppName string) string {
 	home, err := os.UserHomeDir()
 	if err != nil || home == "" {
 		return clientFallbackOutputDir
@@ -84,6 +88,35 @@ func migrateLegacyClientDataDirectory(directory string) (bool, error) {
 		return false, fmt.Errorf("迁移旧数据目录 %s 失败: %w", legacy, err)
 	}
 	return true, nil
+}
+
+// migrateLegacyClientOutputDirectory：已保存的下载目录正好是改名前的默认目录（如 ~/Movies/果果剧库）时，
+// 把该目录改名为新的默认目录并更新配置。用户自定义的目录不动；新旧目录同时存在时不合并、保持原配置。
+func migrateLegacyClientOutputDirectory(dataDir string) (string, error) {
+	path := runtimeSettingsPath(dataDir)
+	document, err := readConfigDocument(path)
+	if err != nil {
+		return "", nil
+	}
+	legacy := clientOutputDirectoryNamed(clientLegacyAppName)
+	current := strings.TrimSpace(document.Download.Directory)
+	if current == "" || filepath.Clean(current) != filepath.Clean(legacy) {
+		return "", nil
+	}
+	target := clientDefaultOutputDirectory()
+	if _, err := os.Lstat(target); !errors.Is(err, os.ErrNotExist) {
+		return "", nil
+	}
+	if directoryExists(legacy) {
+		if err := os.Rename(legacy, target); err != nil {
+			return "", fmt.Errorf("迁移旧下载目录 %s 失败: %w", legacy, err)
+		}
+	}
+	document.Download.Directory = target
+	if err := writeConfigDocument(path, document); err != nil {
+		return "", err
+	}
+	return target, nil
 }
 
 func directoryExists(path string) bool {
@@ -119,6 +152,10 @@ func prepareClientDirectories(explicitDataDir string) (string, string, error) {
 	output := ""
 	if _, err := os.Stat(runtimeSettingsPath(directory)); errors.Is(err, os.ErrNotExist) {
 		output = clientDefaultOutputDirectory()
+	} else if moved, err := migrateLegacyClientOutputDirectory(directory); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+	} else if moved != "" {
+		fmt.Fprintln(os.Stderr, "已将旧下载目录迁移到", moved)
 	}
 	return directory, output, nil
 }

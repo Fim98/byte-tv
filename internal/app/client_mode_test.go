@@ -130,3 +130,39 @@ func TestClientLegacyDataDirectoryIsMigrated(t *testing.T) {
 		t.Fatal("should not migrate when target exists")
 	}
 }
+
+func TestClientLegacyOutputDirectoryIsMigrated(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	legacy := clientOutputDirectoryNamed(clientLegacyAppName)
+	if err := os.MkdirAll(legacy, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(legacy, "ep1.mp4"), []byte("v"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	data := t.TempDir()
+	if err := saveRuntimeSettings(data, runtimeSettings{Concurrency: 2, RequestConcurrency: 2, RequestIntervalMS: 500, OutputDir: &legacy}); err != nil {
+		t.Fatal(err)
+	}
+	moved, err := migrateLegacyClientOutputDirectory(data)
+	if err != nil || moved != clientDefaultOutputDirectory() {
+		t.Fatalf("moved=%q err=%v", moved, err)
+	}
+	if _, err := os.Stat(filepath.Join(moved, "ep1.mp4")); err != nil {
+		t.Fatal(err)
+	}
+	document, err := readConfigDocument(runtimeSettingsPath(data))
+	if err != nil || document.Download.Directory != moved {
+		t.Fatalf("directory=%q err=%v", document.Download.Directory, err)
+	}
+	// 自定义目录不迁移。
+	custom := filepath.Join(home, "elsewhere")
+	if err := saveRuntimeSettings(data, runtimeSettings{Concurrency: 2, RequestConcurrency: 2, RequestIntervalMS: 500, OutputDir: &custom}); err != nil {
+		t.Fatal(err)
+	}
+	if moved, _ := migrateLegacyClientOutputDirectory(data); moved != "" {
+		t.Fatalf("custom directory migrated to %q", moved)
+	}
+}
