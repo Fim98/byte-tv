@@ -25,27 +25,67 @@
     "appId": "com.guoguo.juku",
     "productName": "果果剧库",
     "artifactName": "GuoguoJuku-${version}-${os}-${arch}.${ext}",
-    "directories": { "output": "dist", "buildResources": "build" },
-    "files": ["main.js", "preload.js", "backend.js", "package.json"],
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "backend.js",
+      "package.json"
+    ],
     "extraResources": [
-      { "from": "../frontend/dist", "to": "ui" },
-      { "from": "resources/bin/${os}", "to": "bin" }
+      {
+        "from": "../frontend/dist",
+        "to": "ui"
+      },
+      {
+        "from": "resources/bin/${os}",
+        "to": "bin"
+      }
     ],
     "asar": true,
     "mac": {
       "category": "public.app-category.entertainment",
-      "target": [{ "target": "dmg" }, { "target": "zip" }],
+      "target": [
+        {
+          "target": "dmg"
+        },
+        {
+          "target": "zip"
+        }
+      ],
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
-      "binaries": ["Contents/Resources/bin/juku-backend"],
-      "notarize": true
+      "binaries": [
+        "Contents/Resources/bin/juku-backend"
+      ],
+      "notarize": true,
+      "x64ArchFiles": "Contents/Resources/bin/juku-backend"
     },
     "win": {
-      "target": [{ "target": "nsis", "arch": ["x64"] }]
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
     },
-    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true, "perMachine": false },
-    "publish": [{ "provider": "generic", "url": "https://example.invalid/juku/updates" }]
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false
+    },
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://example.invalid/juku/updates"
+      }
+    ]
   }
 }
