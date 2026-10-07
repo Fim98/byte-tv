@@ -10,14 +10,14 @@ export function Poster({ drama, badge, progress, subtitle, onPlay, onFollow, onD
   const title = titleOf(drama)
   return (
     <div className={`poster poster-${size}`}>
-      {rank ? <span className="rank-num">{rank}</span> : null}
       <button className="poster-art" onClick={() => (onPlay ? onPlay() : navigate(`/drama/${encodeURIComponent(drama.id)}`))} title={title}>
         {cover && !failed ? (
           <img src={cover} alt="" loading="lazy" onError={() => setFailed(true)} />
         ) : (
           <span className="poster-fallback">{title.slice(0, 1)}</span>
         )}
-        {total ? <span className="tag-episodes">{total}集</span> : null}
+        {rank ? <span className={`rank-badge ${rank === 1 ? "top1" : ""}`}>TOP {rank}</span> : null}
+        {total ? <span className="tag-episodes">{total} 集</span> : null}
         {badge ? <span className="tag-state">{badge}</span> : null}
         {drama.local ? <span className="tag-local">本地</span> : null}
         <span className="poster-title">{title}</span>
@@ -26,17 +26,21 @@ export function Poster({ drama, badge, progress, subtitle, onPlay, onFollow, onD
           {onFollow ? <span onClick={(e) => { e.stopPropagation(); onFollow() }}><Plus size={14} /> 追剧</span> : null}
           {onDownload ? <span onClick={(e) => { e.stopPropagation(); onDownload() }}><Download size={14} /> 下载</span> : null}
         </span>
+        {progress != null ? (
+          <span className="poster-prog"><i style={{ width: `${Math.max(0, Math.min(100, progress))}%` }} /></span>
+        ) : null}
       </button>
-      {progress != null ? (
-        <div className="bar"><i style={{ width: `${Math.max(0, Math.min(100, progress))}%` }} /></div>
-      ) : null}
       <button className="poster-name" onClick={() => navigate(`/drama/${encodeURIComponent(drama.id)}`)}>{title}</button>
       {subtitle ? <div className="poster-sub">{subtitle}</div> : null}
     </div>
   )
 }
 
-export function Row({ title, hint, action, children }) {
+export function BrandMark({ size = 30 }) {
+  return <span className="brand-logo" style={{ width: size, height: size }}><Play size={Math.round(size * 0.47)} fill="currentColor" strokeWidth={0} /></span>
+}
+
+export function Row({ title, hint, action, children, scrollClass = "" }) {
   return (
     <section className="row">
       <header>
@@ -45,7 +49,7 @@ export function Row({ title, hint, action, children }) {
         <span className="grow" />
         {action}
       </header>
-      <div className="row-scroll">{children}</div>
+      <div className={`row-scroll ${scrollClass}`}>{children}</div>
     </section>
   )
 }
@@ -56,6 +60,18 @@ export function Segmented({ value, options, onChange }) {
       {options.map(([key, label]) => (
         <button key={key} className={key === value ? "on" : ""} onClick={() => onChange(key)}>{label}</button>
       ))}
+    </div>
+  )
+}
+
+export function PageHead({ title, sub, children }) {
+  return (
+    <div className="page-head">
+      <div className="tg">
+        <h1 className="page-title">{title}</h1>
+        {sub ? <p className="page-sub">{sub}</p> : null}
+      </div>
+      {children ? <div className="toolbar">{children}</div> : null}
     </div>
   )
 }

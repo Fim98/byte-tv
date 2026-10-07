@@ -10,12 +10,10 @@ export default function Rankings({ route }) {
   const [page, setPage] = useState(1)
   const state = useAsync((signal) => apiGet(`/api/ui/rankings?board=${board}&page=${page}`, { signal }), [board, page])
   return (
-    <div>
-      <h1 className="page-title">榜单</h1>
+    <div className="rankings">
+      <div className="page-head"><div className="tg"><h1 className="page-title">榜单</h1><p className="page-sub">红果官方真实榜单{state.data?.updatedText ? ` · ${state.data.updatedText}` : ""}{state.data?.stale ? "（缓存数据）" : ""}</p></div></div>
       <div className="toolbar">
         <Segmented value={board} options={BOARDS} onChange={(b) => { setBoard(b); setPage(1) }} />
-        {state.data?.updatedText ? <span className="muted">{state.data.updatedText}</span> : null}
-        {state.data?.stale ? <span className="muted">（缓存数据）</span> : null}
       </div>
       <ErrorBox error={state.error} onRetry={state.reload} />
       <div className="grid">

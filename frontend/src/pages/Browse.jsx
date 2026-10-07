@@ -97,7 +97,7 @@ export default function Browse({ route }) {
   const hiddenOnline = q && online.items.length > 0 && (type || tag || status) && !results.some((d) => online.items.some((o) => o.id === d.id))
   return (
     <div className="browse">
-      <h1 className="page-title">{q ? `搜索「${q}」` : "分类"}</h1>
+      <div className="page-head"><div className="tg"><h1 className="page-title">{q ? `搜索「${q}」` : "剧库"}</h1><p className="page-sub">{q ? "本地剧库与红果联网结果合并显示" : "按类型、题材、状态筛选本机剧库"} · 共 {results.length} 部{library.data?.loading ? " · 剧库更新中" : ""}</p></div></div>
       <div className="filters">
         <FilterLine label="类型" value={type} options={TYPES} onChange={(v) => set("type", v)} />
         {tags.length ? <FilterLine label="题材" value={tag} options={[["", "全部"], ...tags]} onChange={(v) => set("tag", v)} /> : null}
@@ -108,7 +108,6 @@ export default function Browse({ route }) {
       <ErrorBox error={online.error} />
       {hiddenOnline ? <p className="muted">分类筛选隐藏了联网结果，<button className="link" onClick={() => navigate(`/browse?q=${encodeURIComponent(q)}`)}>取消分类筛选</button></p> : null}
       <ErrorBox error={library.error} onRetry={library.reload} />
-      <p className="muted">共 {results.length} 部{library.data?.loading ? " · 剧库更新中" : ""}</p>
       <div className="grid">
         {library.loading && !all.length ? <Skeleton count={12} /> : null}
         {results.slice(0, limit).map((d) => (

@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react"
 import { ChevronDown, ChevronRight, FolderOpen, Pause, Play, RotateCcw, X } from "lucide-react"
 import { apiGet, apiPost } from "../api"
-import { Empty, ErrorBox, Segmented, toast } from "../components/common"
+import { Empty, ErrorBox, PageHead, Segmented, toast } from "../components/common"
 import { pickDirectory, revealPath } from "../components/directory"
-import { formatBytes } from "../lib/format"
+import { coverOf, formatBytes } from "../lib/format"
 import { play } from "../actions"
 import { navigate } from "../router"
 
@@ -27,10 +27,17 @@ export default function Downloads({ status }) {
   const [filter, setFilter] = useState("all")
   const [open, setOpen] = useState({})
   const [config, setConfig] = useState(null)
+  const [covers, setCovers] = useState({})
   const load = () => apiGet("/api/ui/tasks").then((r) => { setData(r); setError(null) }).catch(setError)
   useEffect(() => {
     load()
     apiGet("/api/ui/config").then(setConfig).catch(() => {})
+    // 任务记录不带封面：从本机剧库/历史/追剧里按剧 ID 取封面作缩略图。
+    apiGet("/api/desktop/home?full=1").then((h) => {
+      const map = {}
+      for (const d of [...(h.local || []), ...(h.continue || []), ...(h.following || [])]) if (d?.id && coverOf(d)) map[d.id] = coverOf(d)
+      setCovers(map)
+    }).catch(() => {})
     const timer = setInterval(load, 1500)
     return () => clearInterval(timer)
   }, [])
@@ -63,30 +70,42 @@ export default function Downloads({ status }) {
     } catch (e) { toast(e.message, "error") }
   }
   const anyActive = groups.some((g) => g.state === "running")
+  const activeCount = groups.filter((g) => g.state === "running" || g.state === "merging").length
+  const doneCount = groups.filter((g) => g.state === "success").length
+  const totalBytes = groups.reduce((sum, g) => sum + g.bytes, 0)
   return (
-    <div className="downloads">
+    <>
+      <PageHead title="下载与任务" sub="下载、合并共用一套任务队列，关掉页面也会继续">
+        {anyActive ? <button className="btn ghost sm" onClick={() => act("/api/ui/tasks/pause", { dramaIds: groups.map((g) => g.id) }, "已全部暂停")}><Pause size={14} />全部暂停</button> : null}
+        <button className="btn ghost sm" title="只清理已完成/失败/取消的记录，保留视频文件" onClick={() => act("/api/ui/tasks/clear", { ids: (data?.data || []).filter((t) => !ACTIVE.has(t.status)).map((t) => t.id) }, "已清理任务记录（视频保留）")}>清理任务记录</button>
+      </PageHead>
+      <div className="ov-row">
+        <div className="ov-card"><span className="ov-label">进行中</span><span className="ov-value brand">{activeCount}<small>部</small></span></div>
+        <div className="ov-card"><span className="ov-label">已完成</span><span className="ov-value">{doneCount}<small>部</small></span></div>
+        <div className="ov-card"><span className="ov-label">已下载</span><span className="ov-value">{formatBytes(totalBytes)}</span></div>
+      </div>
+      <div className="dl-layout">
       <div className="dl-main">
-        <h1 className="page-title">下载管理</h1>
-        <div className="toolbar">
-          <Segmented value={filter} options={FILTERS} onChange={setFilter} />
+        <div className="sec-head toolbar">
+          <h2 className="sec-title">任务列表</h2>
           <span className="grow" />
-          {anyActive ? <button className="btn ghost sm" onClick={() => act("/api/ui/tasks/pause", { dramaIds: groups.map((g) => g.id) }, "已全部暂停")}><Pause size={14} />全部暂停</button> : null}
-          <button className="btn ghost sm" title="只清理已完成/失败/取消的记录，保留视频文件" onClick={() => act("/api/ui/tasks/clear", { ids: (data?.data || []).filter((t) => !ACTIVE.has(t.status)).map((t) => t.id) }, "已清理任务记录（视频保留）")}>清理任务记录</button>
+          <Segmented value={filter} options={FILTERS} onChange={setFilter} />
         </div>
         <ErrorBox error={error} onRetry={load} />
         {visible.map((g) => {
           const pct = g.merge && g.state === "merging" ? g.merge.progress : g.tasks.length ? Math.round((g.done / g.tasks.length) * 100) : 0
           const detail = g.state === "merging" ? g.merge.detail || "正在合并" : g.current ? `正在下载第 ${g.current.episode} 集 · ${formatBytes(g.current.speedBytesPerSecond)}/s` : g.failed.length ? `${g.failed.length} 集失败：${g.failed[0].error || "原因未知"}` : g.merge?.status === "success" ? "已合并为完整视频" : ""
           return (
-            <div key={g.id} className="dl-row panel">
+            <div key={g.id} className="dl-row">
               <div className="dl-head">
-                <button className="icon-btn" onClick={() => setOpen({ ...open, [g.id]: !open[g.id] })}>{open[g.id] ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</button>
+                <button className="icon-btn" title="展开分集" onClick={() => setOpen({ ...open, [g.id]: !open[g.id] })}>{open[g.id] ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</button>
+                <span className="dl-thumb">{covers[g.id] ? <img src={covers[g.id]} alt="" loading="lazy" /> : null}</span>
                 <div className="dl-info">
-                  <div><button className="link title" onClick={() => navigate(`/drama/${encodeURIComponent(g.id)}`)}>{g.title}</button><span className={`pill-state ${g.state}`}>{g.label}</span>{g.tasks[0]?.downloadQuality ? <span className="muted"> {g.tasks[0].downloadQuality}p</span> : null}</div>
-                  <span className="muted">{detail}</span>
+                  <div><button className="link title" onClick={() => navigate(`/drama/${encodeURIComponent(g.id)}`)}>{g.title}</button>{g.tasks[0]?.downloadQuality ? <span className="muted"> · {g.tasks[0].downloadQuality}P</span> : null}</div>
+                  <span className="muted">第 {g.tasks[0]?.episode}–{g.tasks[g.tasks.length - 1]?.episode} 集 · {formatBytes(g.bytes)}{detail ? ` · ${detail}` : ""}</span>
                   <div className="bar"><i className={g.state} style={{ width: `${pct}%` }} /></div>
                 </div>
-                <div className="dl-meta">{g.done} / {g.tasks.length} 集<br /><span className="muted">{formatBytes(g.bytes)}</span></div>
+                <div className="dl-meta"><span className={`pill-state ${g.state}`}>{g.label}{g.state === "running" || g.state === "merging" ? ` ${pct}%` : ""}</span><br /><span className="muted">{g.done} / {g.tasks.length} 集</span></div>
                 <div className="dl-actions">
                   {g.state === "running" ? <button className="icon-btn" title="暂停" onClick={() => act("/api/ui/tasks/pause", { dramaIds: [g.id] })}><Pause size={15} /></button> : null}
                   {g.state === "paused" ? <button className="icon-btn" title="继续（会重下未完成分集）" onClick={() => act("/api/ui/tasks/resume", { dramaIds: [g.id] })}><Play size={15} /></button> : null}
@@ -134,5 +153,6 @@ export default function Downloads({ status }) {
         </section>
       </aside>
     </div>
+    </>
   )
 }

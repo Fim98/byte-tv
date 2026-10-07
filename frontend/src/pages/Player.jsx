@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import Hls from "hls.js"
-import { ChevronLeft, ListVideo, Maximize, MessageSquare, Pause, PictureInPicture2, Play, SkipForward, Volume2, VolumeX } from "lucide-react"
+import { ChevronLeft, Maximize, Pause, PictureInPicture2, Play, SkipBack, SkipForward, Volume2, VolumeX, X } from "lucide-react"
 import { apiGet, apiPost, native } from "../api"
 import { formatTime } from "../lib/format"
 import { PLAYER_RATES, applyPlayerPrefs, getPlayerPrefs, setPlayerPrefs } from "../lib/playerPrefs"
@@ -44,6 +44,8 @@ export default function Player({ request, onClose }) {
   const holdTimerRef = useRef(null) // 长按 → 计时器放 ref，避免播放中频繁重渲染时被清掉
   const apply = () => applyPlayerPrefs(videoRef.current, { boost: boostRef.current })
   const [drawer, setDrawer] = useState(true)
+  const [drawerPage, setDrawerPage] = useState(null) // null = 跟随当前集所在分页
+  const [jumpText, setJumpText] = useState("")
   const [danmakuOn, setDanmakuOn] = useState(() => localStorage.getItem("juku.danmaku") !== "0")
   const [danmaku, setDanmaku] = useState([])
   const [autoNext, setAutoNext] = useState(() => localStorage.getItem("juku.autonext") !== "0")
@@ -227,6 +229,7 @@ export default function Player({ request, onClose }) {
       else if (k === "n" || k === "N") index < episodes.length && playEpisode(index + 1)
       else if (k === "p" || k === "P") index > 1 && playEpisode(index - 1)
       else if (k === "d" || k === "D") setDanmakuOn((v) => !v)
+      else if (k === "m" || k === "M") toggleMuted()
       else if (k === "]") setPlaybackRate(RATES[Math.min(RATES.length - 1, RATES.indexOf(rate) + 1)] || 1)
       else if (k === "[") setPlaybackRate(RATES[Math.max(0, RATES.indexOf(rate) - 1)] || 1)
       else if (k === "Escape") { if (document.fullscreenElement) document.exitFullscreen(); else onClose() }
@@ -253,10 +256,10 @@ export default function Player({ request, onClose }) {
   useEffect(() => localStorage.setItem("juku.autonext", autoNext ? "1" : "0"), [autoNext])
   const current = episodes[index - 1]
   return (
-    <div ref={rootRef} className={`player ${idle && playing ? "idle" : ""}`}>
+    <div ref={rootRef} className={`player ${idle && playing ? "idle" : ""} ${drawer && episodes.length ? "with-drawer" : ""}`}>
       <div className="player-bg" />
       <header className="player-top">
-        <button className="icon-btn" onClick={onClose}><ChevronLeft size={18} /></button>
+        <button className="icon-btn pl-circle" title="返回 (Esc)" onClick={onClose}><ChevronLeft size={18} /></button>
         <div>
           <h3>{opened?.title || request.title || "正在播放"}</h3>
           <span className="muted">第 {current?.episode || index} 集 / 共 {episodes.length || "?"} 集 · {error ? "" : source || status}</span>
@@ -273,14 +276,16 @@ export default function Player({ request, onClose }) {
           onPlay={() => { setPlaying(true); setStatus("正在播放") }}
           onPause={() => { setPlaying(false); saveProgress(false) }}
           onWaiting={() => setStatus("缓冲中…")}
-          onPlaying={() => { apply(); setStatus("正在播放") }}
+          onPlaying={() => { apply(); setStatus("正在播放"); setError("") }}
           onTimeUpdate={(e) => {
             const v = e.currentTarget
             setPosition(v.currentTime || 0)
             if (Number.isFinite(v.duration)) setDuration(v.duration)
             if (v.buffered.length) setBuffered(v.buffered.end(v.buffered.length - 1))
+            // 切集/换源时旧源拆除会触发一次 error 事件；新源已在正常推进就清掉误报。
+            if (!v.paused && v.readyState >= 3) setError((msg) => (msg ? "" : msg))
           }}
-          onError={() => setError("视频加载失败，可重试")}
+          onError={(e) => { const v = e.currentTarget; if (!v.currentSrc && !v.getAttribute("src")) return; setError("视频加载失败，可重试") }}
           onEnded={() => { saveProgress(true); if (autoNext && index < episodes.length) playEpisode(index + 1) }}
         />
         <div className="danmaku-layer">{visibleDanmaku.map((d, i) => <span key={d.id} style={{ top: `${(i % 8) * 9 + 4}%`, animationDelay: `-${Math.max(0, position - d.timeMs / 1000)}s` }}>{d.text}</span>)}</div>
@@ -294,39 +299,62 @@ export default function Player({ request, onClose }) {
         ) : !playing && opened ? <div className="center-hint">{status}</div> : null}
       </div>
       <footer className="player-controls" onClick={(e) => e.stopPropagation()}>
-        <div className="timeline">
-          <i className="buf" style={{ width: `${duration ? (buffered / duration) * 100 : 0}%` }} />
-          <input type="range" min={0} max={duration || 1} step={0.1} value={Math.min(position, duration || 0)} onChange={(e) => { const v = Number(e.target.value); setPosition(v); if (videoRef.current) videoRef.current.currentTime = v }} />
+        <div className="pl-prog">
+          <span className="time">{formatTime(position)}</span>
+          <div className="timeline">
+            <i className="buf" style={{ width: `${duration ? Math.min(100, (buffered / duration) * 100) : 0}%` }} />
+            <i className="played" style={{ width: `${duration ? Math.min(100, (position / duration) * 100) : 0}%` }} />
+            <input type="range" min={0} max={duration || 1} step={0.1} value={Math.min(position, duration || 0)} onChange={(e) => { const v = Number(e.target.value); setPosition(v); if (videoRef.current) videoRef.current.currentTime = v }} />
+          </div>
+          <span className="time dim">{formatTime(duration)}</span>
         </div>
         <div className="ctrl-row">
-          <button className="icon-btn" onClick={toggle}>{playing ? <Pause size={18} /> : <Play size={18} />}</button>
-          <button className="icon-btn" disabled={index >= episodes.length} onClick={() => playEpisode(index + 1)}><SkipForward size={18} /></button>
-          <span className="time">{formatTime(position)} / {formatTime(duration)}</span>
-          <button className="icon-btn" onClick={toggleMuted}>{muted ? <VolumeX size={18} /> : <Volume2 size={18} />}</button>
-          <input className="vol" type="range" min={0} max={1} step={0.05} value={volume} onChange={(e) => changeVolume(Number(e.target.value))} />
+          <button className="icon-btn pl-lead" title="播放/暂停 (空格)" onClick={toggle}>{playing ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" />}</button>
+          <button className="icon-btn" title="上一集 (P)" disabled={index <= 1} onClick={() => playEpisode(index - 1)}><SkipBack size={17} fill="currentColor" /></button>
+          <button className="icon-btn" title="下一集 (N)" disabled={index >= episodes.length} onClick={() => playEpisode(index + 1)}><SkipForward size={17} fill="currentColor" /></button>
+          <div className="pl-vol">
+            <button className="icon-btn" title="静音 (M)" onClick={toggleMuted}>{muted ? <VolumeX size={17} /> : <Volume2 size={17} />}</button>
+            <input className="vol" type="range" min={0} max={1} step={0.05} value={volume} style={{ "--v": `${(muted ? 0 : volume) * 100}%` }} onChange={(e) => changeVolume(Number(e.target.value))} />
+          </div>
           <span className="grow" />
-          <button className={`icon-btn ${danmakuOn ? "on" : ""}`} title="弹幕 (D)" onClick={() => setDanmakuOn(!danmakuOn)}><MessageSquare size={17} /></button>
-          <select value={rate} onChange={(e) => { setPlaybackRate(Number(e.target.value)); e.target.blur() }}>{RATES.map((r) => <option key={r} value={r}>{r}×</option>)}</select>
-          {qualities.length > 1 ? <select value={quality} onChange={(e) => { e.target.blur(); const q = Number(e.target.value); setPlayerPrefs({ quality: q }); setQuality(q); playEpisode(index, position, playing, q) }}>{qualities.map((q) => <option key={q.value} value={q.value}>{q.label}</option>)}</select> : null}
-          <label className="auto-next"><input type="checkbox" checked={autoNext} onChange={(e) => setAutoNext(e.target.checked)} />自动下一集</label>
-          {document.pictureInPictureEnabled ? <button className="icon-btn" onClick={() => videoRef.current?.requestPictureInPicture().catch(() => {})}><PictureInPicture2 size={17} /></button> : null}
-          <button className={`icon-btn ${drawer ? "on" : ""}`} onClick={() => setDrawer(!drawer)}><ListVideo size={17} /></button>
-          <button className="icon-btn" onClick={fullscreen}><Maximize size={17} /></button>
+          <select title="倍速" value={rate} onChange={(e) => { setPlaybackRate(Number(e.target.value)); e.target.blur() }}>{RATES.map((r) => <option key={r} value={r}>{r}×</option>)}</select>
+          {qualities.length > 1 ? <select title="画质" value={quality} onChange={(e) => { e.target.blur(); const q = Number(e.target.value); setPlayerPrefs({ quality: q }); setQuality(q); playEpisode(index, position, playing, q) }}>{qualities.map((q) => <option key={q.value} value={q.value}>{q.label}</option>)}</select> : null}
+          <button className={`pl-pill ${danmakuOn ? "" : "dim"}`} title="弹幕 (D)" onClick={() => setDanmakuOn(!danmakuOn)}>弹幕{danmakuOn ? "" : " 关"}</button>
+          <label className={`pl-pill auto-next ${autoNext ? "" : "dim"}`} title="自动播放下一集"><input type="checkbox" checked={autoNext} onChange={(e) => setAutoNext(e.target.checked)} />自动连播</label>
+          {episodes.length ? <button className={`pl-pill ${drawer ? "on" : ""}`} title="选集" onClick={() => setDrawer(!drawer)}>选集 {index}/{episodes.length}</button> : null}
+          {document.pictureInPictureEnabled ? <button className="icon-btn" title="画中画" onClick={() => videoRef.current?.requestPictureInPicture().catch(() => {})}><PictureInPicture2 size={17} /></button> : null}
+          <button className="icon-btn" title="全屏 (F)" onClick={fullscreen}><Maximize size={17} /></button>
         </div>
       </footer>
-      {drawer && episodes.length ? (
-        <aside className="ep-drawer" onClick={(e) => e.stopPropagation()}>
-          <h4>选集 · 共 {episodes.length} 集</h4>
-          <div className="ep-grid small">
-            {episodes.map((ep) => (
-              <button key={ep.index} className={`ep ${ep.index === index ? "current" : ""}`} onClick={() => playEpisode(ep.index)}>
-                {ep.episode || ep.index}{ep.taskId ? <i className="ep-local" /> : null}{ep.vip ? <i className="ep-vip">VIP</i> : null}
-              </button>
-            ))}
-          </div>
-          <p className="muted small">空格 播放/暂停 · ←/→ 5 秒 · 长按 → 3× · N/P 切集 · D 弹幕 · F 全屏</p>
-        </aside>
-      ) : null}
+      {drawer && episodes.length ? (() => {
+        const per = 30
+        const pages = Math.ceil(episodes.length / per)
+        const cur = drawerPage ?? Math.floor((index - 1) / per)
+        const slice = episodes.slice(cur * per, cur * per + per)
+        return (
+          <aside className="ep-drawer" onClick={(e) => e.stopPropagation()}>
+            <div className="pl-dhead"><h4>选集</h4><button className="pl-x" title="收起" onClick={() => setDrawer(false)}><X size={15} /></button></div>
+            <div className="pl-dsub">
+              <span>共 {episodes.length} 集 · 每页 {per} 集</span>
+              <input className="pl-jump" placeholder="输入集数跳转" value={jumpText} onChange={(e) => setJumpText(e.target.value.replace(/\D/g, ""))}
+                onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter" && jumpText) { const n = Math.min(episodes.length, Math.max(1, Number(jumpText))); setJumpText(""); setDrawerPage(null); e.currentTarget.blur(); playEpisode(n) } }} />
+            </div>
+            {pages > 1 ? (
+              <div className="pl-segs">
+                {Array.from({ length: pages }, (_, i) => <button key={i} className={`pl-seg ${i === cur ? "on" : ""}`} onClick={() => setDrawerPage(i)}>{i * per + 1}-{Math.min(episodes.length, (i + 1) * per)}</button>)}
+              </div>
+            ) : null}
+            <div className="pl-epgrid">
+              {slice.map((ep) => (
+                <button key={ep.index} className={`pl-ep ${ep.index === index ? "cur" : ep.index < index ? "seen" : ""}`} title={ep.title} onClick={() => { setDrawerPage(null); playEpisode(ep.index) }}>
+                  {ep.episode || ep.index}{ep.taskId ? <i className="ep-local" /> : null}{ep.vip ? <i className="ep-vip">VIP</i> : null}
+                </button>
+              ))}
+            </div>
+            <p className="pl-keys">空格 播放/暂停 · ←/→ 5 秒 · 长按 → 3× · N/P 切集 · M 静音 · D 弹幕 · F 全屏</p>
+          </aside>
+        )
+      })() : null}
     </div>
   )
 }

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import { Bell, ChevronLeft, ChevronRight, Clock, Compass, Download, Heart, Home as HomeIcon, RefreshCw, Search, Settings as SettingsIcon, Trophy } from "lucide-react"
+import { BarChart3, Bell, ChevronLeft, ChevronRight, Clock, Compass, Download, Heart, LayoutGrid, Monitor, RefreshCw, Search, SlidersHorizontal } from "lucide-react"
 import { apiGet, initViewer, native } from "./api"
 import { navigate, useRoute } from "./router"
-import { setToastHandler, toast } from "./components/common"
+import { BrandMark, setToastHandler, toast } from "./components/common"
 import { setPlayerOpener } from "./actions"
 import Home from "./pages/Home"
 import Browse from "./pages/Browse"
@@ -13,11 +13,20 @@ import Downloads from "./pages/Downloads"
 import Settings from "./pages/Settings"
 import Onboarding from "./pages/Onboarding"
 import Player from "./pages/Player"
+import { applyTheme } from "./lib/theme"
+
+applyTheme()
 
 const NAV = [
-  ["发现", [["/home", "首页", HomeIcon], ["/browse", "分类", Compass], ["/rankings", "榜单", Trophy]]],
-  ["我的", [["/following", "追剧", Heart], ["/history", "观看历史", Clock], ["/downloads", "下载管理", Download]]],
+  ["/home", "发现", Compass], ["/browse", "剧库", LayoutGrid], ["/rankings", "榜单", BarChart3],
+  ["/following", "追剧", Heart], ["/history", "历史", Clock], ["/downloads", "下载", Download],
 ]
+
+function Highlight({ text, q }) {
+  const i = q ? text.indexOf(q) : -1
+  if (i < 0) return text
+  return <>{text.slice(0, i)}<span className="kw">{q}</span>{text.slice(i + q.length)}</>
+}
 
 function SearchBox() {
   const [text, setText] = useState("")
@@ -59,7 +68,7 @@ function SearchBox() {
       <input
         ref={input}
         value={text}
-        placeholder="搜索剧名、简介或标签，回车联网搜索红果"
+        placeholder="搜索剧名、标签或简介"
         onChange={(e) => { setText(e.target.value); setOpen(true); setActive(-1) }}
         onCompositionStart={() => (composing.current = true)}
         onCompositionEnd={(e) => { composing.current = false; setText(e.currentTarget.value) }}
@@ -78,9 +87,11 @@ function SearchBox() {
       <kbd>⌘K</kbd>
       {open && items.length > 0 ? (
         <ul className="suggest">
+          <li className="sugg-head" onMouseDown={(e) => e.preventDefault()}><span>联想结果</span><span>{items.length} 条 · 回车联网搜索红果</span></li>
           {items.map((item, i) => (
             <li key={(item.name || "") + i} className={i === active ? "on" : ""} onMouseDown={() => submit(item.name)}>
-              {item.name || item.title}
+              <span><Highlight text={item.name || item.title || ""} q={text.trim()} /></span>
+              <span className="tag">剧集</span>
             </li>
           ))}
         </ul>
@@ -127,7 +138,7 @@ export default function App() {
     }
   }
 
-  if (fatal) return <div className="fatal"><h1>果果剧库无法启动</h1><p>{fatal.message}</p><button className="btn" onClick={() => location.reload()}>重新加载</button></div>
+  if (fatal) return <div className="fatal"><h1>Byte TV 无法启动</h1><p>{fatal.message}</p><button className="btn" onClick={() => location.reload()}>重新加载</button></div>
   if (!ready) return <div className="fatal"><p>正在连接本机服务…</p></div>
   if (onboarding) return <Onboarding onDone={() => { localStorage.setItem("juku.onboarded", "1"); setOnboarding(false) }} />
 
@@ -148,33 +159,34 @@ export default function App() {
     <div className={`shell ${native?.platform === "win32" ? "win" : ""}`}>
       <aside className="side">
         <div className="drag traffic" />
-        <div className="brand"><span className="logo">果</span>果果剧库</div>
-        {NAV.map(([group, items]) => (
-          <nav key={group}>
-            <div className="group">{group}</div>
-            {items.map(([path, label, Icon]) => (
-              <a key={path} href={`#${path}`} className={route.path.startsWith(path) ? "on" : ""}>
-                <Icon size={16} />{label}
-                {path === "/downloads" && status?.activeDownloads ? <span className="count red">{status.activeDownloads}</span> : null}
-              </a>
-            ))}
-          </nav>
-        ))}
-        <nav><a href="#/settings" className={route.path.startsWith("/settings") ? "on" : ""}><SettingsIcon size={16} />设置</a></nav>
-        <div className="grow" />
-        <div className="side-status">
-          <div><i className="dot green" />红果站源</div>
-          <div><i className={`dot ${ff?.status === "ready" ? "green" : ff?.status === "failed" ? "red" : "amber"}`} />FFmpeg {ff?.status === "ready" ? "已就绪" : ff?.status === "failed" ? "准备失败" : "准备中"}</div>
-          <div className="muted">剧库 {status?.library?.total ?? 0} 部</div>
+        <div className="brand"><BrandMark /><span className="brand-name">Byte TV</span></div>
+        <nav className="nav">
+          {NAV.map(([path, label, Icon]) => (
+            <a key={path} href={`#${path}`} className={`nav-item ${route.path.startsWith(path) || (path === "/home" && route.path === "/") ? "on" : ""}`}>
+              <Icon size={18} />{label}
+              {path === "/downloads" && status?.activeDownloads ? <span className="count red">{status.activeDownloads}</span> : null}
+            </a>
+          ))}
+        </nav>
+        <div className="side-bottom">
+          <a href="#/settings" className={`nav-item ${route.path.startsWith("/settings") ? "on" : ""}`}><SlidersHorizontal size={18} />设置</a>
+          <div className="account" title={`剧库 ${status?.library?.total ?? 0} 部`}>
+            <span className="avatar"><Monitor size={15} /></span>
+            <div className="acc-info">
+              <span className="acc-name">本机</span>
+              <span className="acc-role"><i className={`dot ${ff?.status === "ready" ? "green" : ff?.status === "failed" ? "red" : "amber"}`} />FFmpeg {ff?.status === "ready" ? "已就绪" : ff?.status === "failed" ? "准备失败" : "准备中"}</span>
+            </div>
+          </div>
         </div>
       </aside>
       <main className="main">
         <header className="top drag">
-          <button className="icon-btn no-drag" onClick={() => history.back()}><ChevronLeft size={16} /></button>
-          <button className="icon-btn no-drag" onClick={() => history.forward()}><ChevronRight size={16} /></button>
+          <button className="round no-drag" title="后退" onClick={() => history.back()}><ChevronLeft size={16} /></button>
+          <button className="round no-drag" title="前进" onClick={() => history.forward()}><ChevronRight size={16} /></button>
           <div className="no-drag"><SearchBox /></div>
           <span className="grow" />
-          <button className="pill no-drag" onClick={checkNew}><RefreshCw size={14} />检查新内容</button>
+          <span className={`status-chip no-drag ${status ? "" : "warn"}`}><i className={`dot ${status ? "green" : "amber"}`} />{status ? "红果源 · 正常" : "本机服务连接中"}</span>
+          <button className="round no-drag" title="检查新内容" onClick={checkNew}><RefreshCw size={15} /></button>
           <NoticeBell notices={notices} />
         </header>
         <div className="page" key={route.path}>{content}</div>
@@ -189,7 +201,7 @@ function NoticeBell({ notices }) {
   const [open, setOpen] = useState(false)
   return (
     <div className="no-drag bell">
-      <button className="icon-btn" onClick={() => setOpen(!open)}><Bell size={16} />{notices.length ? <i className="badge-dot" /> : null}</button>
+      <button className="round" title="通知" onClick={() => setOpen(!open)}><Bell size={15} />{notices.length ? <i className="badge-dot" /> : null}</button>
       {open ? (
         <div className="notice-panel">
           <h4>通知</h4>

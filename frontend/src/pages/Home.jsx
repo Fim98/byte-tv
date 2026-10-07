@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import { Download, Play, Plus } from "lucide-react"
 import { apiGet, apiPost } from "../api"
 import { Empty, ErrorBox, Poster, Row, Segmented, Skeleton, useAsync } from "../components/common"
-import { categoryOf, coverOf, episodesOf, releaseText, titleOf } from "../lib/format"
+import { categoryOf, coverOf, episodesOf, formatTime, releaseText, titleOf } from "../lib/format"
 import { download, follow, play } from "../actions"
 import { navigate } from "../router"
 
@@ -22,26 +22,24 @@ function Hero({ items }) {
   const cover = coverOf(drama)
   return (
     <section className="hero" onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}>
-      {cover ? <div className="hero-bg" style={{ backgroundImage: `url("${cover}")` }} /> : null}
+      {cover ? <div className="hero-bg blur" style={{ backgroundImage: `url("${cover}")` }} /> : null}
       <div className="hero-body">
         <div className="chips">
-          <span className="chip red">总热播榜 No.{rank}</span>
+          <span className="chip red">红果热播 · TOP {rank}</span>
           {categoryOf(drama) ? <span className="chip">{categoryOf(drama)}</span> : null}
-          {episodesOf(drama) ? <span className="chip">{episodesOf(drama)} 集{releaseText(drama.releaseStatus) ? " · " + releaseText(drama.releaseStatus) : ""}</span> : null}
+          {releaseText(drama.releaseStatus) ? <span className="chip">{releaseText(drama.releaseStatus)}</span> : null}
         </div>
         <h1>{titleOf(drama)}</h1>
+        <p className="hero-meta">{[episodesOf(drama) ? `全 ${episodesOf(drama)} 集` : "", categoryOf(drama), drama.heat ? `热度 ${drama.heat}` : ""].filter(Boolean).join(" · ")}</p>
         <p className="intro">{drama.intro || drama.desc || ""}</p>
         <div className="actions">
-          <button className="btn white" onClick={() => play({ dramaId: drama.id, title: titleOf(drama), resume: true })}><Play size={16} />立即播放</button>
+          <button className="btn primary" onClick={() => play({ dramaId: drama.id, title: titleOf(drama), resume: true })}><Play size={15} fill="currentColor" />立即播放</button>
           <button className="btn ghost" onClick={() => follow(drama.id)}><Plus size={16} />加入追剧</button>
-          <button className="btn ghost" onClick={() => download(drama.id)}><Download size={16} />下载</button>
+          <button className="round" style={{ width: 44, height: 44 }} title="下载" onClick={() => download(drama.id)}><Download size={16} /></button>
         </div>
-        <div className="dots">{items.map((_, i) => <i key={i} className={i === index ? "on" : ""} onClick={() => setIndex(i)} />)}</div>
       </div>
-      <div className="hero-poster" onClick={() => navigate(`/drama/${encodeURIComponent(drama.id)}`)}>{cover ? <img src={cover} alt="" /> : null}</div>
-      <div className="hero-thumbs">
-        {items.map((it, i) => <button key={it.drama.id} className={i === index ? "on" : ""} onClick={() => setIndex(i)}>{coverOf(it.drama) ? <img src={coverOf(it.drama)} alt="" /> : null}</button>)}
-      </div>
+      <div className="dots">{items.map((_, i) => <i key={i} className={i === index ? "on" : ""} onClick={() => setIndex(i)} />)}</div>
+      {cover ? <div className="hero-poster" onClick={() => navigate(`/drama/${encodeURIComponent(drama.id)}`)}><img src={cover} alt="" /></div> : null}
     </section>
   )
 }
@@ -50,7 +48,7 @@ function RankingRow() {
   const [board, setBoard] = useState("hongguo-hot")
   const state = useAsync((signal) => apiGet(`/api/ui/rankings?board=${board}&page=1`, { signal }), [board])
   return (
-    <Row title="热播榜" action={<><Segmented value={board} options={BOARDS} onChange={setBoard} /><a className="more" href={`#/rankings?board=${board}`}>完整榜单 ›</a></>}>
+    <Row title="红果热播榜" action={<><Segmented value={board} options={BOARDS} onChange={setBoard} /><a className="more" href={`#/rankings?board=${board}`}>完整榜单 ›</a></>}>
       {state.loading ? <Skeleton /> : null}
       <ErrorBox error={state.error} onRetry={state.reload} />
       {(state.data?.items || []).slice(0, 10).map((item) => (
@@ -84,6 +82,22 @@ function RecommendRow() {
   )
 }
 
+function ContinueCard({ item }) {
+  const cover = coverOf(item)
+  const pct = item.total ? (item.index / item.total) * 100 : 0
+  return (
+    <button className="cont-card" onClick={() => play({ dramaId: item.id, title: item.title, resume: true, fromHistory: true })}>
+      <span className="cont-thumb">{cover ? <img src={cover} alt="" loading="lazy" /> : null}</span>
+      <span className="cont-info">
+        <span className="cont-name">{titleOf(item)}</span>
+        <span className="cont-sub">看到 第 {item.episode || item.index} 集{item.total ? ` · 共 ${item.total} 集` : ""}{item.position ? ` · ${formatTime(item.position)}` : ""}</span>
+        <span className="bar"><i style={{ width: `${pct}%` }} /></span>
+      </span>
+      <span className="cont-play"><Play size={15} fill="currentColor" /></span>
+    </button>
+  )
+}
+
 export default function Home() {
   const home = useAsync((signal) => apiGet("/api/desktop/home", { signal }), [])
   const hot = useAsync((signal) => apiGet("/api/ui/rankings?board=hongguo-hot&page=1", { signal }), [])
@@ -94,13 +108,8 @@ export default function Home() {
       {heroItems.length ? <Hero items={heroItems} /> : <div className="hero placeholder">{hot.error ? <ErrorBox error={hot.error} onRetry={hot.reload} /> : <span className="muted">正在读取总热播榜…</span>}</div>}
       <ErrorBox error={home.error} onRetry={home.reload} />
       {(data.continue || []).length ? (
-        <Row title="继续观看" hint="按分集与进度续播" action={<a className="more" href="#/history">全部历史 ›</a>}>
-          {data.continue.map((item) => (
-            <Poster key={item.id} drama={item}
-              progress={item.total ? (item.index / item.total) * 100 : 0}
-              subtitle={`第 ${item.index} / ${item.total || "?"} 集`}
-              onPlay={() => play({ dramaId: item.id, title: item.title, resume: true, fromHistory: true })} />
-          ))}
+        <Row title="继续观看" action={<a className="more" href="#/history">查看全部观看记录</a>}>
+          {data.continue.map((item) => <ContinueCard key={item.id} item={item} />)}
         </Row>
       ) : null}
       {data.followingNew ? (

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { apiGet, apiPost } from "../api"
 import { pickDirectory } from "../components/directory"
+import { BrandMark } from "../components/common"
 
 // 首次启动引导：欢迎 → 下载位置 → FFmpeg → 网络检测
 export default function Onboarding({ onDone }) {
@@ -29,7 +30,7 @@ export default function Onboarding({ onDone }) {
     } catch (e) { setError(e.message) }
   }
   const steps = [
-    <><h1>欢迎使用果果剧库</h1><p>在线观看与下载红果短剧。请仅下载你拥有权利或已获授权的内容。</p></>,
+    <><h1>欢迎使用 Byte TV</h1><p>在线观看与下载红果短剧。请仅下载你拥有权利或已获授权的内容。</p></>,
     <><h1>选择下载位置</h1><p className="path">{config?.outputDirSetting || "读取中…"}</p><button className="btn ghost" onClick={changeDir}>更改…</button>{config?.restartRequired ? <p className="muted small">新目录将在重启后生效</p> : null}</>,
     <><h1>准备 FFmpeg</h1><p>{ffmpeg?.detail || "检查中…"}</p>{ffmpeg?.totalBytes ? <div className="bar big"><i style={{ width: `${(ffmpeg.downloadedBytes / ffmpeg.totalBytes) * 100}%` }} /></div> : null}<p className="muted small">不需要 FFmpeg 的内容可以先播放，不必等待。</p>{ffmpeg?.status === "failed" ? <button className="btn ghost" onClick={() => apiPost("/api/ui/ffmpeg", {}).then(setFFmpeg)}>重试</button> : null}</>,
     <><h1>检测网络</h1>{network ? network.map((n) => <p key={n.name}>{n.name}：{n.error ? `❌ ${n.error}` : `✅ ${n.detail || n.status}`}</p>) : <p>检测中…</p>}<p className="muted small">如无法连接，可稍后在“设置 → 网络与代理”中配置代理。</p></>,
@@ -37,6 +38,7 @@ export default function Onboarding({ onDone }) {
   return (
     <div className="onboarding">
       <div className="ob-card">
+        <div className="ob-brand"><BrandMark /><span className="brand-name">Byte TV</span></div>
         <div className="ob-steps">{steps.map((_, i) => <i key={i} className={i <= step ? "on" : ""} />)}</div>
         {steps[step]}
         {error ? <p className="warn">{error}</p> : null}

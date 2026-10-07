@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
-import { Check, Download, MoreHorizontal, Play, Plus, RefreshCw } from "lucide-react"
+import { Check, Download, Heart, MoreHorizontal, Play, RefreshCw } from "lucide-react"
 import { apiGet, apiPost } from "../api"
 import { ErrorBox, Poster, Row, Skeleton, toast, useAsync } from "../components/common"
 import { categoryOf, coverOf, formatTime, releaseText, titleOf } from "../lib/format"
@@ -42,44 +42,50 @@ export default function Detail({ id, route }) {
   const mainLabel = !progress ? "开始观看 第 1 集" : finishedAll ? "重新观看" : `继续播放 第 ${progress.episode || progress.index} 集 · ${formatTime(progress.position)}`
   const startEpisode = (ep) => play({ dramaId: id, title, episode: ep.index, taskId: undefined })
   const toggleFollow = async () => { if (await follow(id, !saved)) setSaved(!saved) }
+  const meta = [categoryOf(drama), drama.onlineDate ? `${String(drama.onlineDate).slice(0, 10)} 上线` : "", drama.heat ? `热度 ${drama.heat}` : ""].filter(Boolean)
   return (
     <div className="detail">
-      {cover ? <div className="detail-bg" style={{ backgroundImage: `url("${cover}")` }} /> : null}
-      <div className="detail-left">
-        <div className="detail-poster">{cover ? <img src={cover} alt="" /> : <span className="poster-fallback">{title.slice(0, 1)}</span>}</div>
-        <div className="stats">
-          <div><b>{drama.heat || "未知"}</b><span>热度</span></div>
-          <div><b>{drama.totalEpisode || episodes.length || "未知"}</b><span>集数</span></div>
-          <div><b>{drama.onlineDate ? String(drama.onlineDate).slice(0, 7) : "未知"}</b><span>上线</span></div>
+      <section className="d-hero">
+        {cover ? <div className="detail-bg" style={{ backgroundImage: `url("${cover}")` }} /> : null}
+        <div className="detail-left">
+          <div className="detail-poster">{cover ? <img src={cover} alt="" /> : <span className="poster-fallback">{title.slice(0, 1)}</span>}</div>
         </div>
-      </div>
-      <div className="detail-main">
-        <h1>{title}</h1>
-        <div className="chips">
-          {categoryOf(drama) ? <span className="chip">{categoryOf(drama)}</span> : null}
-          {(drama.tags || []).slice(0, 4).map((t) => <span key={t} className="chip">{t}</span>)}
-          {episodes.length ? <span className="chip">{episodes.length} 集{releaseText(drama.releaseStatus) ? " · " + releaseText(drama.releaseStatus) : ""}</span> : null}
-          {data.following?.knownEpisodes && episodes.length > data.following.knownEpisodes ? <span className="chip green">更新至 {episodes.length} 集 · 新增 {episodes.length - data.following.knownEpisodes} 集</span> : null}
-          {drama.vip ? <span className="chip amber">VIP</span> : null}
-        </div>
-        {drama.intro ? <p className="intro">{drama.intro}</p> : null}
-        <div className="actions">
-          <button className="btn primary" onClick={() => play({ dramaId: id, title, resume: Boolean(progress) && !finishedAll, episode: finishedAll ? 1 : undefined })}><Play size={16} />{mainLabel}</button>
-          <button className="btn ghost" onClick={toggleFollow}>{saved ? <><Check size={16} />已追剧</> : <><Plus size={16} />追剧</>}</button>
-          <button className="btn ghost" onClick={() => download(id)}><Download size={16} />下载</button>
-          <div className="menu-wrap">
-            <button className="btn ghost icon" onClick={() => setMenu(!menu)}><MoreHorizontal size={16} /></button>
-            {menu ? (
-              <div className="menu" onMouseLeave={() => setMenu(false)}>
-                <button onClick={() => { markCompleted(id, true); setMenu(false) }}>标为已看</button>
-                <button onClick={() => { apiGet(`/api/desktop/episodes?id=${encodeURIComponent(id)}&refresh=1`).then(state.setData).then(() => toast("资料与选集已刷新", "ok")).catch((e) => toast(e.message, "error")); setMenu(false) }}><RefreshCw size={13} /> 刷新资料与选集</button>
-              </div>
-            ) : null}
+        <div className="detail-main">
+          <div className="chips">
+            <span className="chip red">红果独播</span>
+            {episodes.length ? <span className="chip">全 {drama.totalEpisode || episodes.length} 集</span> : null}
+            {releaseText(drama.releaseStatus) ? <span className={`chip ${drama.releaseStatus === "completed" || releaseText(drama.releaseStatus) === "已完结" ? "green" : ""}`}>{releaseText(drama.releaseStatus)}</span> : null}
+            {data.following?.knownEpisodes && episodes.length > data.following.knownEpisodes ? <span className="chip green">新增 {episodes.length - data.following.knownEpisodes} 集</span> : null}
+            {drama.vip ? <span className="chip amber">VIP</span> : null}
+          </div>
+          <h1>{title}</h1>
+          <div className="meta-row">
+            {drama.score ? <span className="meta-score">{drama.score} 分</span> : null}
+            {meta.map((m) => <span key={m}>{m}</span>)}
+            {(drama.tags || []).slice(0, 4).map((t) => <span key={t} className="chip">{t}</span>)}
+          </div>
+          {drama.intro ? <p className="intro">{drama.intro}</p> : null}
+          <div className="actions">
+            <button className="btn primary" onClick={() => play({ dramaId: id, title, resume: Boolean(progress) && !finishedAll, episode: finishedAll ? 1 : undefined })}><Play size={15} fill="currentColor" />{mainLabel}</button>
+            {progress && !finishedAll ? <button className="btn ghost" onClick={() => play({ dramaId: id, title, episode: 1 })}>从第 1 集开始</button> : null}
+            <button className={`round ${saved ? "brand" : ""}`} title={saved ? "已追剧（点击取消）" : "追剧"} onClick={toggleFollow}>{saved ? <Check size={17} /> : <Heart size={17} />}</button>
+            <button className="round" title="下载全剧" onClick={() => download(id)}><Download size={17} /></button>
+            <div className="menu-wrap">
+              <button className="round" title="更多" onClick={() => setMenu(!menu)}><MoreHorizontal size={17} /></button>
+              {menu ? (
+                <div className="menu" onMouseLeave={() => setMenu(false)}>
+                  <button onClick={() => { markCompleted(id, true); setMenu(false) }}><Check size={13} /> 标为已看</button>
+                  <button onClick={() => { apiGet(`/api/desktop/episodes?id=${encodeURIComponent(id)}&refresh=1`).then(state.setData).then(() => toast("资料与选集已刷新", "ok")).catch((e) => toast(e.message, "error")); setMenu(false) }}><RefreshCw size={13} /> 刷新资料与选集</button>
+                </div>
+              ) : null}
+            </div>
           </div>
         </div>
-        <section className="episodes panel">
+      </section>
+      <div className="detail-body">
+        <section className="episodes">
           <header>
-            <h3>选集</h3>
+            <h3>分集列表 · 共 {episodes.length} 集</h3>
             {pages > 1 ? (
               <div className="seg">
                 {Array.from({ length: pages }, (_, i) => <button key={i} className={i === page ? "on" : ""} onClick={() => setPage(i)}>{i * PAGE + 1}-{Math.min(episodes.length, (i + 1) * PAGE)}</button>)}
@@ -93,7 +99,7 @@ export default function Detail({ id, route }) {
           <div className="ep-grid">
             {visible.map((ep) => (
               <button key={ep.index} className={`ep ${ep.watched ? "watched" : ""} ${ep.current ? "current" : ""}`} onClick={() => startEpisode(ep)} title={ep.title}>
-                {ep.episode || ep.index}
+                第 {ep.episode || ep.index} 集{ep.current ? " · 播放中" : ep.watched ? " · 已看" : ep.duration ? ` · ${formatTime(ep.duration)}` : ""}
                 {ep.local ? <i className="ep-local" /> : null}
                 {ep.vip ? <i className="ep-vip">VIP</i> : null}
                 {ep.current && ep.duration ? <i className="ep-bar" style={{ width: `${Math.min(100, (ep.position / ep.duration) * 100)}%` }} /> : null}
