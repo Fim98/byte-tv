@@ -148,22 +148,92 @@ jobs:
           # choco 的 makensis 通常不在 PATH，显式补上
           echo "C:\Program Files (x86)\NSIS" >> $env:GITHUB_PATH
 
-      - name: 打包 exe 与安装包
+      - name: 预取 WebView2 引导程序（原生 PowerShell，写入原生可见路径）
+        shell: pwsh
+        run: |
+          # 用 PowerShell 而非 Git Bash 下载：确保文件落在原生 Windows 可见的位置，
+          # 避免 MSYS 路径视图与 makensis 的原生视图不一致导致 "no files found"。
+          $dir = Join-Path $env:GITHUB_WORKSPACE "bin\windows"
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          $out = Join-Path $dir "MicrosoftEdgeWebview2Setup.exe"
+          if ((Test-Path $out) -and ((Get-Item $out).Length -gt 0)) {
+            Write-Host "引导程序已存在，跳过下载"
+          } else {
+            $ok = $false
+            foreach ($i in 1..3) {
+              try {
+                Invoke-WebRequest -Uri "https://go.microsoft.com/fwlink/p/?LinkId=2124703" -OutFile $out -UseBasicParsing -TimeoutSec 120
+                if ((Test-Path $out) -and ((Get-Item $out).Length -gt 0)) { $ok = $true; break }
+              } catch {
+                Write-Host "第 $i 次下载失败：$_"
+              }
+              Start-Sleep -Seconds 3
+            }
+            if (-not $ok) { throw "WebView2 引导程序下载失败" }
+          }
+          $f = Get-Item $out
+          Write-Host "引导程序：$($f.FullName)  $([math]::Round($f.Length/1MB,2)) MB"
+
+      - name: 打包 Windows 可执行文件（不依赖 NSIS）
         shell: bash
         run: |
-          # WebView2 引导程序的下载与重试已内置在脚本里，这里只负责调用
-          bash scripts/desktop/package-windows.sh
+          # 先产出可执行文件本身，保证 Windows 一定有可用产物
+          bash -c 'source scripts/desktop/common.sh && build_frontend'
+          bash -c '
+            source scripts/desktop/common.sh
+            cd "$ROOT"
+            WIN="$OUT/windows"; mkdir -p "$WIN"
+            HOSTTAGS=""; [ "$(go env GOHOSTOS)" = "linux" ] && HOSTTAGS="-tags gtk3"
+            GOOS= GOARCH= go run $HOSTTAGS ./cmd/bytetv -gen-icon 256 "$WIN/icon.ico"
+            cp "$WIN/icon.ico" packaging/windows/icon.ico
+            ( cd cmd/bytetv && go run github.com/tc-hib/go-winres@v0.3.3 simply --arch amd64,arm64 --icon ../../packaging/windows/icon.ico --manifest gui \
+                --product-name "Byte TV" --file-description "Byte TV" --product-version "$VERSION" --file-version "$VERSION" )
+            for arch in amd64 arm64; do
+              GOOS=windows GOARCH=$arch CGO_ENABLED=0 go build -trimpath -ldflags "$LDFLAGS -H windowsgui" -o "$WIN/bytetv-$arch.exe" ./cmd/bytetv
+            done
+            rm -f cmd/bytetv/rsrc_windows_*.syso
+            ls -lh "$WIN"
+          '
 
-      - name: 列出产物（便于排查）
-        shell: bash
-        run: ls -la bin/windows/
-
-      - name: 收集产物
-        shell: bash
+      - name: 生成 NSIS 安装包
+        shell: pwsh
+        continue-on-error: true
         run: |
-          mkdir -p out
-          cp bin/windows/ByteTV-*-setup.exe out/ || { echo "未找到安装包"; exit 1; }
-          ls -lh out
+          # makensis 需要原生可见路径；这里用 PowerShell 调用，路径由 PowerShell 解析
+          $root = $env:GITHUB_WORKSPACE
+          $win  = Join-Path $root "bin\windows"
+          $nsis = "C:\Program Files (x86)\NSIS\makensis.exe"
+          if (-not (Test-Path $nsis)) { Write-Host "未找到 makensis，跳过安装包"; exit 0 }
+          foreach ($arch in @("amd64","arm64")) {
+            & $nsis -V2 `
+              "-DVERSION=$env:VERSION" "-DARCH=$arch" `
+              "-DBIN=$(Join-Path $win "bytetv-$arch.exe")" `
+              "-DBOOTSTRAPPER=$(Join-Path $win "MicrosoftEdgeWebview2Setup.exe")" `
+              "-DICON=$(Join-Path $root "packaging\windows\icon.ico")" `
+              "-DOUTFILE=$(Join-Path $win "ByteTV-$env:VERSION-$arch-setup.exe")" `
+              "$(Join-Path $root "packaging\windows\installer.nsi")"
+          }
+          Get-ChildItem $win -Filter *.exe | Format-Table Name, Length
+
+      - name: 收集产物（安装包 + 便携版 zip 兜底）
+        shell: pwsh
+        run: |
+          $root = $env:GITHUB_WORKSPACE
+          $win  = Join-Path $root "bin\windows"
+          $out  = Join-Path $root "out"
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+
+          # 便携版：始终产出，作为安装包不可用时的兜底
+          $portable = Join-Path $out "ByteTV-$env:VERSION-windows-portable.zip"
+          Compress-Archive -Path (Join-Path $win "bytetv-*.exe") -DestinationPath $portable -Force
+          Write-Host "已生成便携版：$portable"
+
+          # 安装包：存在才收集
+          $setups = Get-ChildItem $win -Filter "ByteTV-*-setup.exe" -ErrorAction SilentlyContinue
+          foreach ($s in $setups) { Copy-Item $s.FullName $out -Force }
+          if (-not $setups) { Write-Host "提示：本次未产出 NSIS 安装包，仅提供便携版" }
+
+          Get-ChildItem $out | Format-Table Name, Length
 
       - uses: actions/upload-artifact@v4
         with:

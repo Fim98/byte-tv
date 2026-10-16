@@ -15,13 +15,23 @@ for arch in amd64 arm64; do
   GOOS=windows GOARCH=$arch CGO_ENABLED=0 go build -trimpath -ldflags "$LDFLAGS -H windowsgui" -o "$WIN/bytetv-$arch.exe" ./cmd/bytetv
 done
 rm -f cmd/bytetv/rsrc_windows_*.syso
-BOOT="$WIN/MicrosoftEdgeWebview2Setup.exe"
-# 内置 WebView2 Evergreen Bootstrapper：缺失时下载（带重试，避免 CI 网络抖动中断打包）
+BOOT_NAME="MicrosoftEdgeWebview2Setup.exe"
+BOOT="$WIN/$BOOT_NAME"
+# 内置 WebView2 Evergreen Bootstrapper：缺失时下载（带重试，避免 CI 网络抖动中断打包）。
+#
+# 注意：Git Bash（MSYS）下不能直接用 `curl -o <MSYS路径>` —— MSYS 的 curl 会按
+# MSYS 路径语义落盘，导致 makensis 这种原生程序从 Windows 视角看不到该文件
+# （表现为 du 有大小、makensis 报 no files found）。
+# 因此这里统一用 `cygpath -w` 把目标转成原生 Windows 路径再交给 curl。
+native_path() {
+  if command -v cygpath >/dev/null 2>&1; then cygpath -w "$1"; else printf '%s' "$1"; fi
+}
 if [ ! -s "$BOOT" ]; then
   ok=0
   for i in 1 2 3; do
     echo "==> 下载 WebView2 引导程序（第 $i 次尝试）"
-    if curl -fsSL --retry 3 --retry-delay 2 -o "$BOOT" "https://go.microsoft.com/fwlink/p/?LinkId=2124703" && [ -s "$BOOT" ]; then
+    if curl -fsSL --retry 3 --retry-delay 2 -o "$(native_path "$BOOT")" \
+      "https://go.microsoft.com/fwlink/p/?LinkId=2124703" && [ -s "$BOOT" ]; then
       ok=1
       break
     fi
@@ -31,24 +41,23 @@ if [ ! -s "$BOOT" ]; then
 fi
 echo "WebView2 引导程序：$(du -h "$BOOT" | cut -f1)"
 
-# makensis 是原生 Windows 程序。Git Bash 下即使经 cygpath 转成 D:/a/... 形式，
-# File 指令仍可能解析不到（MSYS 与原生路径视图不一致）。
-# 改用 NSIS 的标准做法：在 .nsi 所在目录内调用，全部传相对路径，
-# 既不涉及盘符转换，也符合 makensis「File 以脚本目录为基准」的解析规则。
-if [ "$(uname -s 2>/dev/null)" = "MINGW"* ] || [ -n "${MSYSTEM:-}" ]; then
-  # 诊断：从原生 Windows 侧确认文件真实可见（失败时能立刻定位）
-  WIN_BOOT_WIN="$(cygpath -w "$BOOT" 2>/dev/null || echo "$BOOT")"
-  echo "=== 原生侧文件检查 ==="
-  cmd //c "if exist \"$WIN_BOOT_WIN\" (echo FOUND) else (echo MISSING)" || true
+# 诊断：从原生 Windows 视角确认关键文件可见（Git Bash 与原生路径视图可能不一致）
+if command -v cygpath >/dev/null 2>&1; then
+  echo "=== 原生侧文件可见性检查 ==="
+  for f in "$BOOT" "$WIN/bytetv-amd64.exe" "$ROOT/packaging/windows/icon.ico"; do
+    cmd //c "if exist \"$(cygpath -w "$f")\" (echo   FOUND $(basename "$f")) else (echo   MISSING $(basename "$f"))" || true
+  done
 fi
 
+# makensis 以 .nsi 所在目录为基准解析 File 路径，且需要原生可见的路径。
+# 用相对路径最稳妥：cd 进 packaging/windows 后引用 ../../bin/windows/*。
 for arch in amd64 arm64; do
   (
     cd packaging/windows
     makensis -V2 \
       -DVERSION="$VERSION" -DARCH="$arch" \
       -DBIN="../../bin/windows/bytetv-$arch.exe" \
-      -DBOOTSTRAPPER="../../bin/windows/$(basename "$BOOT")" \
+      -DBOOTSTRAPPER="../../bin/windows/$BOOT_NAME" \
       -DICON="icon.ico" \
       -DOUTFILE="../../bin/windows/ByteTV-$VERSION-$arch-setup.exe" \
       installer.nsi
