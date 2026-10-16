@@ -148,27 +148,15 @@ jobs:
           # choco 的 makensis 通常不在 PATH，显式补上
           echo "C:\Program Files (x86)\NSIS" >> $env:GITHUB_PATH
 
-      - name: 预下载 WebView2 引导程序（带重试）
-        shell: bash
-        run: |
-          # 打包脚本会在缺失时自行 curl 一次；这里先带重试下好，避免网络波动中断打包
-          OUT="bin/windows"
-          mkdir -p "$OUT"
-          BOOT="$OUT/MicrosoftEdgeWebview2Setup.exe"
-          for i in 1 2 3; do
-            if curl -fsSL --retry 3 --retry-delay 2 -o "$BOOT" \
-              "https://go.microsoft.com/fwlink/p/?LinkId=2124703"; then
-              echo "已下载（第 $i 次尝试）：$(ls -lh "$BOOT" | awk '{print $5}')"
-              break
-            fi
-            echo "第 $i 次下载失败，重试…"
-            [ "$i" = "3" ] && { echo "WebView2 引导程序下载失败"; exit 1; }
-            sleep 3
-          done
-
       - name: 打包 exe 与安装包
         shell: bash
-        run: bash scripts/desktop/package-windows.sh
+        run: |
+          # WebView2 引导程序的下载与重试已内置在脚本里，这里只负责调用
+          bash scripts/desktop/package-windows.sh
+
+      - name: 列出产物（便于排查）
+        shell: bash
+        run: ls -la bin/windows/
 
       - name: 收集产物
         shell: bash

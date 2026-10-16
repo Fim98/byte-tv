@@ -16,9 +16,25 @@ for arch in amd64 arm64; do
 done
 rm -f cmd/bytetv/rsrc_windows_*.syso
 BOOT="$WIN/MicrosoftEdgeWebview2Setup.exe"
-[ -f "$BOOT" ] || curl -fsSL -o "$BOOT" "https://go.microsoft.com/fwlink/p/?LinkId=2124703"
+# 内置 WebView2 Evergreen Bootstrapper：缺失时下载（带重试，避免 CI 网络抖动中断打包）
+if [ ! -s "$BOOT" ]; then
+  ok=0
+  for i in 1 2 3; do
+    echo "==> 下载 WebView2 引导程序（第 $i 次尝试）"
+    if curl -fsSL --retry 3 --retry-delay 2 -o "$BOOT" "https://go.microsoft.com/fwlink/p/?LinkId=2124703" && [ -s "$BOOT" ]; then
+      ok=1
+      break
+    fi
+    sleep 3
+  done
+  [ "$ok" = "1" ] || { echo "WebView2 引导程序下载失败，请检查网络或预先放入 $BOOT"; exit 1; }
+fi
+echo "WebView2 引导程序：$(du -h "$BOOT" | cut -f1)"
+# makensis 相对 .nsi 所在目录解析 File 路径；这里统一转绝对路径，避免工作目录差异
+ABS_BOOT="$(cd "$(dirname "$BOOT")" && pwd)/$(basename "$BOOT")"
+ABS_WIN="$(cd "$WIN" && pwd)"
 for arch in amd64 arm64; do
-  makensis -V2 -DVERSION="$VERSION" -DARCH="$arch" -DBIN="$WIN/bytetv-$arch.exe" -DBOOTSTRAPPER="$BOOT" \
+  makensis -V2 -DVERSION="$VERSION" -DARCH="$arch" -DBIN="$ABS_WIN/bytetv-$arch.exe" -DBOOTSTRAPPER="$ABS_BOOT" \
     -DICON="$ROOT/packaging/windows/icon.ico" -DOUTFILE="$WIN/ByteTV-$VERSION-$arch-setup.exe" packaging/windows/installer.nsi
 done
 ls -lh "$WIN"/*.exe
