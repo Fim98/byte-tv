@@ -12,3 +12,10 @@ cmd/bytetv/ui/*
 !cmd/bytetv/ui/.gitkeep
 /bin/
 packaging/windows/icon.ico
+
+# 系统与本地杂物
+.DS_Store
+.arts/
+.workbuddy/
+tmp_demo.html
+design-preview/

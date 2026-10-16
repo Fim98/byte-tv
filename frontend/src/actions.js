@@ -1,5 +1,5 @@
 import { apiPost } from "./api"
-import { toast } from "./components/common"
+import { toast } from "./components/cds"
 
 let playerOpener = null
 export function setPlayerOpener(fn) { playerOpener = fn }

@@ -1,95 +1,155 @@
-/* Byte TV 设计 token：取自 design-app/index.html（深色为默认，[data-theme="light"] 为浅色）。 */
-:root{
-  --c-stage:#08080A;
-  --c-base:#050508;
-  --c-panel:#0D0D12;
-  --s-1:rgba(255,255,255,.045);
-  --s-2:rgba(255,255,255,.06);
-  --s-3:rgba(255,255,255,.07);
-  --s-4:rgba(255,255,255,.08);
-  --s-5:rgba(255,255,255,.12);
-  --s-6:rgba(255,255,255,.16);
-  --l-1:rgba(255,255,255,.10);
-  --l-2:rgba(255,255,255,.18);
-  --t-1:#FFFFFF;
-  --t-2:#C9C9D4;
-  --t-3:#A6A6B2;
-  --t-4:#8A8A98;
-  --t-5:#7A7A86;
-  --t-6:#E8E8EE;
-  --c-brand:#FF5C36;
-  --c-brand-t:#FF8A6B;
-  --brand-soft:rgba(255,92,54,.16);
-  --c-success:#33D499;
-  --c-success-t:#34D399;
-  --success-soft:rgba(51,212,153,.12);
-  --c-warn-t:#FBBF24;
-  --c-danger:#FA7085;
-  --c-danger-t:#FB7185;
-  --danger-soft:rgba(250,112,133,.14);
-  --c-warm:#FFB347;
-  --track:rgba(255,255,255,.14);
-  --track-2:rgba(255,255,255,.16);
-  --track-3:rgba(255,255,255,.22);
-  --sw-off-knob:rgba(255,255,255,.55);
-  --nav-active-bg:rgba(255,255,255,.10);
-  --nav-active-fg:#FFFFFF;
-  --nav-idle:#A6A6B3;
+/* ==========================================================================
+   Byte TV 设计令牌 —— Claude Design System (CDS)
+   逐字对齐 open-claude-ui/code-examples/cds-theme.css 与 designs/byte-tv/index.html
+   主题通过 <html data-theme="dark|light"> 切换（见 lib/theme.js）。
+   ========================================================================== */
+
+:root,
+[data-theme="dark"] {
+  /* 1. 表面色彩阶梯：暖黑，绝不用纯黑 #000 */
+  --cds-surface-0: #0b0b0a;   /* 全局应用背景 Canvas */
+  --cds-surface-1: #151515;   /* 侧边栏 / 中间层基底 */
+  --cds-surface-2: #1a1a19;   /* 卡片 / 面板表面 */
+  --cds-surface-3: #20201e;   /* 输入框 / 悬停填充 */
+  --cds-surface-popover: #222220;
+
+  /* 2. 品牌陶土色阶 */
+  --cds-clay: #d97757;
+  --cds-clay-hover: #e08264;
+  --cds-clay-light: rgba(217, 119, 87, .15);
+
+  /* 3. Alpha 与边框（暗色下用白色半透明） */
+  --cds-alpha-1: hsla(0, 0%, 100%, .05);
+  --cds-alpha-2: hsla(0, 0%, 100%, .09);
+  --cds-alpha-3: hsla(0, 0%, 100%, .18);
+  --cds-alpha-4: hsla(0, 0%, 100%, .30);
+  --cds-border: var(--cds-alpha-2);
+  --cds-border-strong: var(--cds-alpha-3);
+
+  /* 4. 双环架构（暗色：内高光 1px + 外轮廓 0px） */
+  --cds-ring-inner: 1px;
+  --cds-ring-outer: 0px;
+  --cds-ring-color: rgba(255, 255, 255, .10);
+
+  /* 5. 阴影（暗色下沉更重） */
+  --cds-shadow-color: rgba(0, 0, 0, .40);
+  --cds-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, .4), 0 2px 8px 0 var(--cds-shadow-color);
+  --cds-shadow-md: 0 2px 4px 0 rgba(0, 0, 0, .4), 0 6px 16px 0 var(--cds-shadow-color);
+  --cds-shadow-lg: 0 4px 8px 0 rgba(0, 0, 0, .5), 0 16px 36px -2px var(--cds-shadow-color);
+  --cds-shadow-popover: inset 0 0 0 1px rgba(255, 255, 255, .10),
+                        0 8px 28px rgba(0, 0, 0, .65), 0 2px 8px rgba(0, 0, 0, .45);
+  --cds-panel-shadow: 0 0 0 1px var(--cds-border), var(--cds-shadow-sm);
+  --cds-panel-shadow-hover: 0 0 0 1px var(--cds-border-strong), 0 6px 20px rgba(0, 0, 0, .6);
+  --cds-shadow-composer: 0 4px 20px rgba(0, 0, 0, .4), inset 0 0 0 1px var(--cds-border);
+  --cds-focus-shadow: inset 0 0 0 1px var(--cds-surface-1), 0 0 0 1.5px var(--cds-clay), 0 0 8px 2px rgba(217, 119, 87, .35);
+
+  /* 6. 交互填充与文本色阶 */
+  --cds-fill-ghost-hover: var(--cds-alpha-1);
+  --cds-fill-ghost-selected: var(--cds-alpha-2);
+  --cds-fill-secondary: var(--cds-alpha-2);
+  --cds-fill-secondary-hover: rgba(255, 255, 255, .14);
+  --cds-text-primary: #f5f5f5;
+  --cds-text-secondary: #a3a3a3;
+  --cds-text-muted: #666666;
+  --cds-segmented-track: rgba(255, 255, 255, .08);
+  --cds-segmented-thumb: #2c2c2a;
+
+  /* 7. 语义色 */
+  --cds-fill-danger: #f87171;
+  --cds-ok: #3fb950;
+  --cds-warn: #e3a008;
+
+  /* 8. 明暗专用微调 */
+  --hairline: rgba(255, 255, 255, .07);
+  --rail: rgba(255, 255, 255, .12);
+  --glass: rgba(21, 21, 21, .72);
+  --lift: rgba(0, 0, 0, .45);
+  /* 播放器环境光 */
+  --amb-a: rgba(217, 119, 87, .20);
+  --amb-b: rgba(96, 110, 116, .26);
+  --film-shadow: rgba(0, 0, 0, .80);
+
+  color-scheme: dark;
 }
-[data-theme="light"]{
-  --c-stage:#DEDEE3;
-  --c-base:#F2F2F5;
-  --c-panel:#FFFFFF;
-  --s-1:rgba(0,0,0,.035);
-  --s-2:rgba(0,0,0,.04);
-  --s-3:rgba(0,0,0,.04);
-  --s-4:rgba(0,0,0,.05);
-  --s-5:rgba(0,0,0,.07);
-  --s-6:rgba(0,0,0,.09);
-  --l-1:rgba(0,0,0,.08);
-  --l-2:rgba(0,0,0,.14);
-  --t-1:#121214;
-  --t-2:#55555E;
-  --t-3:#6B6B75;
-  --t-4:#75757F;
-  --t-5:#8A8A93;
-  --t-6:#2A2A32;
-  --c-brand:#FF5C36;
-  --c-brand-t:#D93F1B;
-  --brand-soft:rgba(232,71,33,.12);
-  --c-success-t:#12A26E;
-  --success-soft:rgba(51,212,153,.18);
-  --c-warn-t:#B7791F;
-  --c-danger-t:#E11D48;
-  --danger-soft:rgba(250,112,133,.16);
-  --c-warm:#C7801A;
-  --track:rgba(0,0,0,.10);
-  --track-2:rgba(0,0,0,.12);
-  --track-3:rgba(0,0,0,.18);
-  --sw-off-knob:rgba(0,0,0,.28);
-  --nav-active-bg:rgba(232,71,33,.10);
-  --nav-active-fg:#E84721;
-  --nav-idle:#6B6B75;
+
+[data-theme="light"] {
+  /* 1. 表面阶梯：暖白，绝不用纯白 #fff 打底 */
+  --cds-surface-0: #f5f5f3;
+  --cds-surface-1: #fcfcfb;
+  --cds-surface-2: #ffffff;
+  --cds-surface-3: #ffffff;
+  --cds-surface-popover: #ffffff;
+
+  /* 2. 陶土色（浅色下加深以保证对比） */
+  --cds-clay: #d97757;
+  --cds-clay-hover: #cc5a36;
+  --cds-clay-light: #fbf3ef;
+
+  /* 3. Alpha 与边框（浅色下用黑色半透明） */
+  --cds-alpha-1: hsla(0, 0%, 8%, .05);
+  --cds-alpha-2: hsla(0, 0%, 8%, .10);
+  --cds-alpha-3: hsla(0, 0%, 8%, .20);
+  --cds-alpha-4: hsla(0, 0%, 8%, .35);
+  --cds-border: var(--cds-alpha-2);
+  --cds-border-strong: var(--cds-alpha-3);
+
+  /* 4. 双环架构（浅色：内轮廓 0px + 外轮廓 1px） */
+  --cds-ring-inner: 0px;
+  --cds-ring-outer: 1px;
+  --cds-ring-color: var(--cds-border);
+
+  /* 5. 阴影（浅色轻盈） */
+  --cds-shadow-color: rgba(0, 0, 0, .08);
+  --cds-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, .05), 0 2px 8px 0 var(--cds-shadow-color);
+  --cds-shadow-md: 0 2px 4px 0 rgba(0, 0, 0, .05), 0 6px 16px 0 var(--cds-shadow-color);
+  --cds-shadow-lg: 0 4px 8px 0 rgba(0, 0, 0, .06), 0 12px 28px -2px var(--cds-shadow-color);
+  --cds-shadow-popover: 0 0 0 1px var(--cds-ring-color),
+                        0 8px 24px rgba(0, 0, 0, .12), 0 2px 6px rgba(0, 0, 0, .08);
+  --cds-panel-shadow: 0 0 0 1px var(--cds-border), var(--cds-shadow-sm);
+  --cds-panel-shadow-hover: 0 0 0 1px var(--cds-border-strong), 0 4px 16px -2px rgba(0, 0, 0, .09);
+  --cds-shadow-composer: 0 4px 20px rgba(0, 0, 0, .035), inset 0 0 0 1px var(--cds-border);
+  --cds-focus-shadow: inset 0 0 0 1px var(--cds-surface-1), 0 0 0 1.5px var(--cds-clay), 0 0 6px 1px rgba(217, 119, 87, .25);
+
+  /* 6. 交互填充与文本色阶 */
+  --cds-fill-ghost-hover: var(--cds-alpha-1);
+  --cds-fill-ghost-selected: var(--cds-alpha-2);
+  --cds-fill-secondary: var(--cds-alpha-2);
+  --cds-fill-secondary-hover: rgba(21, 21, 21, .14);
+  --cds-text-primary: #151515;
+  --cds-text-secondary: #525252;
+  --cds-text-muted: #8a8a8a;
+  --cds-segmented-track: rgba(0, 0, 0, .06);
+  --cds-segmented-thumb: #ffffff;
+
+  /* 7. 语义色 */
+  --cds-fill-danger: #ef4444;
+  --cds-ok: #2f9e44;
+  --cds-warn: #b8860b;
+
+  /* 8. 明暗专用微调 */
+  --hairline: rgba(0, 0, 0, .06);
+  --rail: rgba(0, 0, 0, .10);
+  --glass: rgba(252, 252, 251, .72);
+  --lift: rgba(0, 0, 0, .05);
+  /* 播放器环境光：浅色是暖白 + 极淡冷灰，画面才压得住 */
+  --amb-a: rgba(217, 119, 87, .17);
+  --amb-b: rgba(126, 138, 144, .13);
+  --film-shadow: rgba(28, 24, 20, .34);
+
+  color-scheme: light;
 }
-:root{
-  /* 字体 */
-  --font-ui:"Noto Sans SC","PingFang SC","Hiragino Sans GB","Microsoft YaHei",-apple-system,system-ui,sans-serif;
-  --font-num:"Inter","SF Pro Display",-apple-system,system-ui,sans-serif;
-  /* 字号 */
-  --fs-hero:40px; --fs-page:30px; --fs-sec:20px; --fs-brand:17px; --fs-lg:16px; --fs-md:14px; --fs-sm:13px; --fs-xs:12px; --fs-2xs:11px;
-  /* 间距 */
-  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px; --sp-6:24px; --sp-7:32px;
-  --side-w:232px; --top-h:72px; --page-x:32px;
-  /* 圆角 */
-  --r-sm:9px; --r-md:12px; --r-lg:14px; --r-xl:16px; --r-2xl:20px; --r-3xl:24px; --r-pill:999px;
-  /* 阴影 */
-  --sh-poster:0 16px 40px -6px rgba(0,0,0,.55);
-  --sh-pop:0 24px 60px -12px rgba(0,0,0,.6);
-  --sh-brand:0 6px 16px rgba(255,92,54,.35);
-  /* 动效 */
-  --ease:cubic-bezier(.2,.7,.2,1); --dur:.16s; --dur-slow:.3s;
-  /* 播放器（固定深色，与主题无关） */
-  --pl-pill:rgba(255,255,255,.10); --pl-drawer:rgba(13,13,18,.78); --pl-buffer:rgba(255,255,255,.38);
-  color-scheme:dark;
+
+/* 高分屏视网膜物理发丝线补偿 */
+:root { --cds-ring-hairline: 1px; }
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 2dppx) {
+  :root { --cds-ring-hairline: 0.5px; }
 }
-[data-theme="light"]{ color-scheme:light; --sh-poster:0 16px 40px -10px rgba(0,0,0,.25); --sh-pop:0 24px 60px -16px rgba(0,0,0,.25); }
+
+/* 布局与字体常量 */
+:root {
+  --side-w: 228px;
+  --top-h: 52px;
+  --page-x: 26px;
+  --font-ui: "Noto Sans SC", "PingFang SC", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-num: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}

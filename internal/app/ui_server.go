@@ -254,7 +254,6 @@ func (a *UIApp) ListenAndServe(addr string) error {
 func (a *UIApp) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", a.handleIndex)
-	mux.Handle("/assets/", webAssets())
 	mux.HandleFunc("/api/ui/viewer", a.handleViewer)
 	mux.HandleFunc("/api/ui/viewer/legacy", a.handleViewerLegacy)
 	mux.HandleFunc("/api/ui/sync/package", a.handleViewerSyncPackage)
@@ -722,6 +721,8 @@ func (a *UIApp) saveStateLocked() error {
 	return nil
 }
 
+// handleIndex 仅在客户端模式走不到（页面由 ClientUIFS / -client-ui 提供）。
+// 非客户端模式没有内置页面，明确回 404 而不是吐一个不存在的界面。
 func (a *UIApp) handleIndex(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" && r.URL.Path != "/login" {
 		http.NotFound(w, r)
@@ -731,9 +732,10 @@ func (a *UIApp) handleIndex(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
-	_, _ = w.Write([]byte(uiHTML))
+	w.WriteHeader(http.StatusNotFound)
+	_, _ = w.Write([]byte("Byte TV 界面由桌面客户端提供，请运行客户端程序。"))
 }
 
 func (a *UIApp) handleDramas(w http.ResponseWriter, r *http.Request) {

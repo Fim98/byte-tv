@@ -1,151 +1,275 @@
 import { useEffect, useRef, useState } from "react"
+import { FolderOpen, HardDrive, Palette, Play, RefreshCw, Wifi } from "lucide-react"
 import { apiGet, apiPost, native } from "../api"
-import { ErrorBox, PageHead, Segmented, toast } from "../components/common"
+import { Button, Card, ErrorBox, Segmented, StatusDot, Switch, Tag, toast } from "../components/cds"
 import { pickDirectory, revealPath } from "../components/directory"
 import { getTheme, setTheme } from "../lib/theme"
 
-const SECTIONS = [["general", "外观与窗口"], ["storage", "下载与存储"], ["playback", "播放与弹幕"], ["network", "网络与代理"], ["ffmpeg", "组件 · FFmpeg"], ["data", "数据与备份"], ["about", "关于与更新"]]
+// 设置分节：只保留用户能理解的项。底层实现（转码引擎、会话上限、并发额度）不出现在界面。
+const SECTIONS = [
+  { key: "general", label: "外观与窗口", icon: Palette },
+  { key: "playback", label: "播放", icon: Play },
+  { key: "storage", label: "下载与存储", icon: HardDrive },
+  { key: "network", label: "网络", icon: Wifi },
+  { key: "about", label: "关于", icon: RefreshCw },
+]
 const THEMES = [["dark", "深色"], ["light", "浅色"], ["system", "跟随系统"]]
 
-function Toggle({ value, onChange }) {
-  return <button className={`toggle ${value ? "on" : ""}`} onClick={() => onChange(!value)}><i /></button>
-}
-
-function Item({ title, desc, children }) {
+/* 设置行：左侧标题与说明，右侧控件 */
+function Item({ title, desc, children, last }) {
   return (
-    <div className="set-item">
-      <div><b>{title}</b>{desc ? <p className="muted small">{desc}</p> : null}</div>
-      <div className="set-ctrl">{children}</div>
+    <div className={`flex items-center gap-4 py-3.5 ${last ? "" : "border-b border-hairline"}`}>
+      <div className="min-w-0 flex-1">
+        <b className="block text-[12.5px] font-medium text-ink">{title}</b>
+        {desc ? <p className="mt-1 max-w-[560px] text-[11px] leading-relaxed text-ink-muted">{desc}</p> : null}
+      </div>
+      <div className="flex flex-none items-center gap-2">{children}</div>
     </div>
   )
 }
 
-function useLocal(key, initial) {
-  const [value, setValue] = useState(() => { const v = localStorage.getItem(key); return v == null ? initial : v === "1" })
+function useLocalToggle(key, initial) {
+  const [value, setValue] = useState(() => {
+    const v = localStorage.getItem(key)
+    return v == null ? initial : v === "1"
+  })
   return [value, (v) => { localStorage.setItem(key, v ? "1" : "0"); setValue(v) }]
 }
 
 export default function Settings({ section = "", status, onChanged }) {
   const [config, setConfig] = useState(null)
   const [error, setError] = useState(null)
-  const [ffmpeg, setFFmpeg] = useState(null)
   const [network, setNetwork] = useState(null)
   const [proxy, setProxy] = useState("")
-  const [autoNext, setAutoNext] = useLocal("juku.autonext", true)
-  const [danmaku, setDanmaku] = useLocal("juku.danmaku", true)
+  const [autoNext, setAutoNext] = useLocalToggle("juku.autonext", true)
+  const [danmaku, setDanmaku] = useLocalToggle("juku.danmaku", true)
   const [closeToTray, setCloseToTray] = useState(true)
   const [version, setVersion] = useState("")
   const [theme, setThemeState] = useState(getTheme)
   const gridRef = useRef(null)
+
   useEffect(() => {
     apiGet("/api/ui/config").then((c) => { setConfig(c); setProxy(c.proxyURL || "") }).catch(setError)
-    apiGet("/api/ui/ffmpeg").then(setFFmpeg).catch(() => {})
     native?.getSettings?.().then((s) => setCloseToTray(s?.closeToTray !== false)).catch(() => {})
     native?.getVersion?.().then(setVersion).catch(() => {})
   }, [])
+
   const save = async (patch) => {
     try {
-      const next = await apiPost("/api/ui/config", { concurrency: config.concurrency, requestConcurrency: config.requestConcurrency, requestIntervalMs: config.requestIntervalMs, ...patch })
+      const next = await apiPost("/api/ui/config", {
+        concurrency: config.concurrency,
+        requestConcurrency: config.requestConcurrency,
+        requestIntervalMs: config.requestIntervalMs,
+        ...patch,
+      })
       setConfig(next)
       onChanged?.()
       toast(next.restartRequired ? "已保存，新下载目录将在重启后生效" : "设置已保存", "ok")
-    } catch (e) { toast(e.message, "error") }
+    } catch (e) {
+      toast(e.message, "error")
+    }
   }
+
   useEffect(() => {
     if (!config || !section) return
     gridRef.current?.querySelector(`#set-${section}`)?.scrollIntoView({ block: "start", behavior: "smooth" })
   }, [config, section])
+
   const body = (key) => {
     switch (key) {
       case "playback":
         return (
           <>
-            <Item title="自动播放下一集"><Toggle value={autoNext} onChange={setAutoNext} /></Item>
-            <Item title="默认开启弹幕"><Toggle value={danmaku} onChange={setDanmaku} /></Item>
-            <Item title="预缓存下一集" desc="由后端“播放与资源限制”控制，单机默认开启">自动</Item>
+            <Item title="自动播放下一集">
+              <Switch checked={autoNext} onChange={setAutoNext} />
+            </Item>
+            <Item title="默认开启弹幕" desc="按原始时间分段加载；暂停、倍速、跳转与切集保持同步。">
+              <Switch checked={danmaku} onChange={setDanmaku} />
+            </Item>
+            <Item title="预缓存下一集" desc="当前集缓存余量足够时提前准备好下一集，切集无需等待。" last>
+              <Tag tone="clay">默认开启</Tag>
+            </Item>
           </>
         )
+
       case "storage":
         return (
           <>
-            <Item title="下载目录" desc={config.restartRequired ? `新目录重启后生效；当前 ${config.outputDir}` : config.outputDir}>
-              <button className="btn ghost sm" onClick={async () => { try { const p = await pickDirectory(config.outputDirSetting); if (p) save({ outputDir: p }) } catch (e) { toast(e.message, "error") } }}>更改</button>
-              <button className="btn ghost sm" onClick={() => revealPath(config.outputDir)}>显示</button>
+            <Item title="下载目录" desc={config.restartRequired ? `新目录将在重启后生效；当前 ${config.outputDir}` : config.outputDir}>
+              <Button
+                size="sm" variant="outline"
+                onClick={async () => {
+                  try {
+                    const p = await pickDirectory(config.outputDirSetting)
+                    if (p) save({ outputDir: p })
+                  } catch (e) {
+                    toast(e.message, "error")
+                  }
+                }}
+              >
+                更改
+              </Button>
+              <Button size="sm" variant="ghost" icon={FolderOpen} onClick={() => revealPath(config.outputDir)}>显示</Button>
             </Item>
-            <Item title="同时下载数" desc="1–32"><input className="input sm" type="number" min={1} max={32} value={config.concurrency} onChange={(e) => setConfig({ ...config, concurrency: Number(e.target.value) })} onBlur={() => save({})} /></Item>
-            <Item title="按站源分类保存"><Toggle value={config.groupBySource} onChange={(v) => save({ groupBySource: v })} /></Item>
+            <Item title="同时下载数" desc="同时进行的下载任务数量，1–32。">
+              <input
+                type="number" min={1} max={32}
+                value={config.concurrency}
+                onChange={(e) => setConfig({ ...config, concurrency: Number(e.target.value) })}
+                onBlur={() => save({})}
+                className="tnum h-7 w-[84px] rounded-sm bg-surface-3 text-center text-[12.5px] text-ink shadow-[inset_0_0_0_1px_var(--cds-border)] outline-none focus-visible:shadow-focus"
+              />
+            </Item>
+            <Item title="按站源分类保存" desc="开启后新下载保存为「下载目录 / 站源 / 剧名 / 分集」。已有下载不受影响。" last>
+              <Switch checked={config.groupBySource} onChange={(v) => save({ groupBySource: v })} />
+            </Item>
           </>
         )
+
       case "network":
         return (
           <>
-            <Item title="当前网络" desc={config.network}>{config.proxyMode === "auto" ? "自动" : config.proxyMode}</Item>
-            <Item title="自定义代理" desc="留空为自动；支持 http:// https:// socks5://">
-              <input className="input" value={proxy} placeholder="例如 http://127.0.0.1:7890" onChange={(e) => setProxy(e.target.value)} />
-              <button className="btn ghost sm" onClick={() => save({ proxyURL: proxy })}>保存</button>
+            <Item title="当前网络" desc="站点请求、媒体与密钥均使用此配置。">
+              <span className="text-[12.5px] text-ink-secondary">{config.network}</span>
+              {config.proxyMode === "auto" ? <Tag>自动</Tag> : null}
             </Item>
-            <Item title="剧库请求并发 / 同站间隔(ms)">
-              <input className="input sm" type="number" value={config.requestConcurrency} onChange={(e) => setConfig({ ...config, requestConcurrency: Number(e.target.value) })} onBlur={() => save({})} />
-              <input className="input sm" type="number" value={config.requestIntervalMs} onChange={(e) => setConfig({ ...config, requestIntervalMs: Number(e.target.value) })} onBlur={() => save({})} />
+            <Item title="自定义代理" desc="留空为自动检测系统代理；支持 http:// https:// socks5://">
+              <input
+                value={proxy}
+                placeholder="例如 http://127.0.0.1:7890"
+                onChange={(e) => setProxy(e.target.value)}
+                className="h-7 w-[220px] rounded-sm bg-surface-3 px-2.5 text-[12px] text-ink shadow-[inset_0_0_0_1px_var(--cds-border)] outline-none placeholder:text-ink-muted focus-visible:shadow-focus"
+              />
+              <Button size="sm" variant="outline" onClick={() => save({ proxyURL: proxy })}>保存</Button>
             </Item>
-            <Item title="检测当前连接">
-              <button className="btn ghost sm" onClick={() => { setNetwork("检测中…"); apiPost("/api/ui/network/check", {}).then((r) => setNetwork((r.data || []).map((x) => `${x.name}：${x.error || x.detail || x.status}`).join("；"))).catch((e) => setNetwork(e.message)) }}>检测</button>
+            <Item title="剧库请求并发 / 同站间隔" desc="同一来源的元数据请求会串行执行，间隔用于降低被限流概率。">
+              <input
+                type="number"
+                value={config.requestConcurrency}
+                onChange={(e) => setConfig({ ...config, requestConcurrency: Number(e.target.value) })}
+                onBlur={() => save({})}
+                className="tnum h-7 w-[64px] rounded-sm bg-surface-3 text-center text-[12.5px] text-ink shadow-[inset_0_0_0_1px_var(--cds-border)] outline-none focus-visible:shadow-focus"
+              />
+              <input
+                type="number"
+                value={config.requestIntervalMs}
+                onChange={(e) => setConfig({ ...config, requestIntervalMs: Number(e.target.value) })}
+                onBlur={() => save({})}
+                className="tnum h-7 w-[84px] rounded-sm bg-surface-3 text-center text-[12.5px] text-ink shadow-[inset_0_0_0_1px_var(--cds-border)] outline-none focus-visible:shadow-focus"
+              />
             </Item>
-            {network ? <p className="muted small">{network}</p> : null}
+            <Item title="检测当前连接" desc={network || "检查各站源的可达性。"} last>
+              <Button
+                size="sm" variant="outline"
+                onClick={() => {
+                  setNetwork("检测中…")
+                  apiPost("/api/ui/network/check", {})
+                    .then((r) => setNetwork((r.data || []).map((x) => `${x.name}：${x.error || x.detail || x.status}`).join("；")))
+                    .catch((e) => setNetwork(e.message))
+                }}
+              >
+                检测
+              </Button>
+            </Item>
           </>
         )
-      case "ffmpeg":
-        return (
-          <>
-            <Item title="状态" desc={ffmpeg?.detail}>{ffmpeg?.status === "ready" ? "已就绪" : ffmpeg?.status || "未知"}</Item>
-            <Item title="路径">{ffmpeg?.path || "—"}</Item>
-            {ffmpeg?.totalBytes ? <Item title="下载进度">{Math.round((ffmpeg.downloadedBytes / ffmpeg.totalBytes) * 100)}%</Item> : null}
-            <Item title="重新检查"><button className="btn ghost sm" onClick={() => apiPost("/api/ui/ffmpeg", {}).then(setFFmpeg).catch((e) => toast(e.message, "error"))}>重新检查</button></Item>
-          </>
-        )
-      case "data":
-        return (
-          <>
-            <Item title="数据目录" desc={config.dataDir}><button className="btn ghost sm" onClick={() => revealPath(config.dataDir)}>打开</button></Item>
-            <Item title="诊断日志" desc="logs/app.log"><button className="btn ghost sm" onClick={() => revealPath(`${config.dataDir}/logs/app.log`)}>显示</button></Item>
-            <Item title="数据迁移包" desc="导入/导出网页版或 VPS 版的历史与追剧（阶段 4 接入界面）">待接入</Item>
-          </>
-        )
+
       case "about":
         return (
           <>
-            <Item title="版本">{version || "开发版"}</Item>
-            <Item title="检查更新" desc={native?.shell === "wails" ? "Wails 自动更新（构建时配置更新源）" : "Electron 自动更新（electron-updater，需配置发布地址）"}><button className="btn ghost sm" disabled={!native?.checkForUpdates} onClick={() => native.checkForUpdates().then((r) => toast(r?.message || "已检查", "ok")).catch((e) => toast(e.message, "error"))}>检查更新</button></Item>
-            <Item title="重新运行首次引导"><button className="btn ghost sm" onClick={() => { localStorage.removeItem("juku.onboarded"); location.reload() }}>运行</button></Item>
+            <Item title="版本">
+              <span className="tnum text-[12.5px] text-ink-secondary">{version || "开发版"}</span>
+            </Item>
+            <Item title="检查更新">
+              <Button
+                size="sm" variant="outline"
+                disabled={!native?.checkForUpdates}
+                onClick={() => native.checkForUpdates().then((r) => toast(r?.message || "已检查", "ok")).catch((e) => toast(e.message, "error"))}
+              >
+                检查更新
+              </Button>
+            </Item>
+            <Item title="数据目录" desc={config.dataDir}>
+              <Button size="sm" variant="ghost" onClick={() => revealPath(config.dataDir)}>打开</Button>
+            </Item>
+            <Item title="诊断日志" desc="logs/app.log">
+              <Button size="sm" variant="ghost" onClick={() => revealPath(`${config.dataDir}/logs/app.log`)}>显示</Button>
+            </Item>
+            <Item title="重新运行首次引导" last>
+              <Button
+                size="sm" variant="outline"
+                onClick={() => { localStorage.removeItem("juku.onboarded"); location.reload() }}
+              >
+                运行
+              </Button>
+            </Item>
           </>
         )
+
       default:
         return (
           <>
-            <Item title="主题" desc="界面配色；播放器始终为深色">
+            <Item title="主题" desc="界面配色，跟随系统时读取 macOS / Windows 的外观设置。">
               <Segmented value={theme} options={THEMES} onChange={(t) => { setTheme(t); setThemeState(t) }} />
             </Item>
-            <Item title="关闭窗口时" desc="开启后关闭窗口保留在后台（菜单栏/托盘），下载与合并不中断">
-              <Toggle value={closeToTray} onChange={(v) => { setCloseToTray(v); native?.setSettings?.({ closeToTray: v }) }} />
+            <Item title="关闭窗口时" desc="开启后关闭窗口保留在后台，下载与合并不中断。" last>
+              <Switch
+                checked={closeToTray}
+                onChange={(v) => { setCloseToTray(v); native?.setSettings?.({ closeToTray: v }) }}
+              />
             </Item>
-            <Item title="客户端模式" desc={status?.clientMode ? "本机所有者（无需登录）" : "非客户端模式（网页/服务器版）"}>{status?.clientMode ? "✓" : "—"}</Item>
           </>
         )
     }
   }
+
+  if (!config) return <ErrorBox error={error} />
+
   return (
-    <>
-      <PageHead title="设置" sub="设置保存在本机数据目录，修改后立即生效（下载目录需重启）" />
-      {!config ? <ErrorBox error={error} /> : (
-        <div className="set-grid" ref={gridRef}>
-          {SECTIONS.map(([key, label]) => (
-            <section key={key} id={`set-${key}`} className={`setcard ${key === section ? "focus" : ""}`}>
-              <h3>{label}</h3>
+    <div className="grid grid-cols-[198px_1fr] items-start gap-5" ref={gridRef}>
+      {/* 左侧分节导航 */}
+      <nav className="flex flex-col gap-px">
+        {SECTIONS.map(({ key, label, icon: Icon }) => {
+          const on = key === section
+          return (
+            <a
+              key={key}
+              href={`#/settings/${key}`}
+              className={`flex h-8 items-center gap-2.5 rounded-sm px-2.5 text-[12.5px] transition-colors duration-[180ms] ease-out ${
+                on ? "bg-[var(--cds-fill-ghost-selected)] font-medium text-ink" : "text-ink-secondary hover:bg-[var(--cds-fill-ghost-hover)] hover:text-ink"
+              }`}
+            >
+              <Icon className={`size-3.5 flex-none ${on ? "text-clay" : ""}`} strokeWidth={1.7} />
+              {label}
+            </a>
+          )
+        })}
+      </nav>
+
+      {/* 右侧表单 */}
+      <div className="flex flex-col gap-4">
+        {SECTIONS.map(({ key, label }) => (
+          <section
+            key={key}
+            id={`set-${key}`}
+            className={`scroll-mt-4 ${key === section ? "rounded-lg shadow-[0_0_0_1px_var(--cds-border-strong),var(--cds-shadow-sm)]" : ""}`}
+          >
+            <Card className="px-4 py-1">
+              <div className="flex items-baseline gap-2.5 pb-1 pt-4">
+                <h3 className="text-sm font-medium tracking-[-.015em] text-ink">{label}</h3>
+              </div>
               {body(key)}
-            </section>
-          ))}
+            </Card>
+          </section>
+        ))}
+
+        <div className="flex items-center gap-2 px-1 text-[11px] text-ink-muted">
+          <StatusDot tone={status?.clientMode ? "ok" : "warn"} />
+          {status?.clientMode ? "本机所有者模式 · 无需登录" : "非客户端模式"}
+          <span className="grow" />
+          设置保存在本机数据目录，修改后立即生效
         </div>
-      )}
-    </>
+      </div>
+    </div>
   )
 }

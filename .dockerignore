@@ -1,8 +1,0 @@
-**
-!go.mod
-!go.sum
-!main.go
-!internal/
-!internal/**
-**/*_test.go
-**/*.test.cjs
