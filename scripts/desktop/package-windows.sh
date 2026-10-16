@@ -30,11 +30,22 @@ if [ ! -s "$BOOT" ]; then
   [ "$ok" = "1" ] || { echo "WebView2 引导程序下载失败，请检查网络或预先放入 $BOOT"; exit 1; }
 fi
 echo "WebView2 引导程序：$(du -h "$BOOT" | cut -f1)"
-# makensis 相对 .nsi 所在目录解析 File 路径；这里统一转绝对路径，避免工作目录差异
-ABS_BOOT="$(cd "$(dirname "$BOOT")" && pwd)/$(basename "$BOOT")"
-ABS_WIN="$(cd "$WIN" && pwd)"
+
+# makensis 是原生程序：在 Git Bash（MSYS）下必须传 Windows 路径，
+# 否则 /d/a/... 这类 MSYS 路径它解析不到（报 "no files found"）。
+# cygpath -m 产出 D:/a/... 混合格式：NSIS 能正确解析，且不含需转义的反斜杠。
+# 非 MSYS 环境（macOS/Linux 交叉编译）没有 cygpath，直接用原路径。
+winpath() {
+  if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf '%s' "$1"; fi
+}
+# makensis 的 File 指令以 .nsi 所在目录为基准解析相对路径，
+# 因此统一传绝对路径最稳妥。
+MK_BOOT="$(winpath "$(cd "$(dirname "$BOOT")" && pwd)/$(basename "$BOOT")")"
+MK_WIN="$(winpath "$(cd "$WIN" && pwd)")"
+MK_ICON="$(winpath "$(cd "$(dirname "$ROOT/packaging/windows/icon.ico")" && pwd)/icon.ico")"
+
 for arch in amd64 arm64; do
-  makensis -V2 -DVERSION="$VERSION" -DARCH="$arch" -DBIN="$ABS_WIN/bytetv-$arch.exe" -DBOOTSTRAPPER="$ABS_BOOT" \
-    -DICON="$ROOT/packaging/windows/icon.ico" -DOUTFILE="$WIN/ByteTV-$VERSION-$arch-setup.exe" packaging/windows/installer.nsi
+  makensis -V2 -DVERSION="$VERSION" -DARCH="$arch" -DBIN="$MK_WIN/bytetv-$arch.exe" -DBOOTSTRAPPER="$MK_BOOT" \
+    -DICON="$MK_ICON" -DOUTFILE="$MK_WIN/ByteTV-$VERSION-$arch-setup.exe" packaging/windows/installer.nsi
 done
 ls -lh "$WIN"/*.exe
