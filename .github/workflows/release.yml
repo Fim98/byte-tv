@@ -1,0 +1,290 @@
+# Byte TV 客户端打包发版
+#
+# 触发方式：
+#   1. 推送形如 v0.1.0 的标签（主要方式）
+#   2. 手动触发（Actions → Release → Run workflow），可指定版本号，仅产出 artifact 不发 Release
+#
+# 复用 scripts/desktop/ 下的打包脚本，不另起一套。
+# 版本号优先取 git tag，其次取手动输入的 version，都不存在时回退 common.sh 的默认值。
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "版本号（不含 v 前缀），例如 0.1.0"
+        required: true
+        default: "0.1.0"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # 打包脚本内部用 GOTOOLCHAIN 兜底；这里直接固定 Go 版本，避免下载工具链
+  GOTOOLCHAIN: local
+
+jobs:
+  # 先解析出版本号，供各平台复用
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      is_release: ${{ steps.v.outputs.is_release }}
+    steps:
+      - name: 解析版本号
+        id: v
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            # refs/tags/v0.1.0 -> 0.1.0
+            VERSION="${GITHUB_REF_NAME#v}"
+            IS_RELEASE=true
+          else
+            VERSION="${{ github.event.inputs.version }}"
+            IS_RELEASE=false
+          fi
+          case "$VERSION" in
+            ""|*[!0-9.]*) echo "版本号格式不合法：$VERSION（应为 x.y.z）"; exit 1 ;;
+          esac
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "is_release=$IS_RELEASE" >> "$GITHUB_OUTPUT"
+          echo "版本号：$VERSION  发布 Release：$IS_RELEASE"
+
+  # ---------- macOS：universal .app + .dmg ----------
+  macos:
+    needs: prepare
+    runs-on: macos-14
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      SKIP_FRONTEND: "0"
+      # 签名 / 公证凭据（未配置时脚本自动降级为 ad-hoc 签名，产物可用于本机测试）
+      MAC_SIGN_IDENTITY: ${{ secrets.MAC_SIGN_IDENTITY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+      BYTETV_UPDATE_URL: ${{ secrets.BYTETV_UPDATE_URL }}
+      BYTETV_UPDATE_PUBKEY: ${{ secrets.BYTETV_UPDATE_PUBKEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: 安装前端依赖
+        working-directory: frontend
+        run: npm ci
+
+      - name: 打包 .app 与 .dmg
+        run: bash scripts/desktop/package-mac.sh
+
+      - name: 校验产物架构
+        run: |
+          set -e
+          APP="bin/Byte TV.app"
+          test -d "$APP" || { echo "未找到 $APP"; exit 1; }
+          file "$APP/Contents/MacOS/bytetv"
+          # universal 必须同时含 arm64 与 x86_64
+          lipo -archs "$APP/Contents/MacOS/bytetv" | tee /tmp/archs
+          grep -q arm64 /tmp/archs && grep -q x86_64 /tmp/archs
+
+      - name: 收集产物
+        run: |
+          mkdir -p out
+          cp "bin/ByteTV-${VERSION}-universal.dmg" out/
+          # .app 打包成 zip，方便未签名时也能分发给测试者
+          ditto -c -k --sequesterRsrc --keepParent "bin/Byte TV.app" "out/ByteTV-${VERSION}-universal-app.zip"
+          ls -lh out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: out/*
+          if-no-files-found: error
+
+  # ---------- Windows：NSIS 安装包 ----------
+  windows:
+    needs: prepare
+    runs-on: windows-latest
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      BYTETV_UPDATE_URL: ${{ secrets.BYTETV_UPDATE_URL }}
+      BYTETV_UPDATE_PUBKEY: ${{ secrets.BYTETV_UPDATE_PUBKEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: 安装前端依赖
+        working-directory: frontend
+        run: npm ci
+
+      - name: 安装 NSIS
+        run: |
+          choco install nsis --no-progress -y
+          # choco 的 makensis 通常不在 PATH，显式补上
+          echo "C:\Program Files (x86)\NSIS" >> $env:GITHUB_PATH
+
+      - name: 预下载 WebView2 引导程序（带重试）
+        shell: bash
+        run: |
+          # 打包脚本会在缺失时自行 curl 一次；这里先带重试下好，避免网络波动中断打包
+          OUT="bin/windows"
+          mkdir -p "$OUT"
+          BOOT="$OUT/MicrosoftEdgeWebview2Setup.exe"
+          for i in 1 2 3; do
+            if curl -fsSL --retry 3 --retry-delay 2 -o "$BOOT" \
+              "https://go.microsoft.com/fwlink/p/?LinkId=2124703"; then
+              echo "已下载（第 $i 次尝试）：$(ls -lh "$BOOT" | awk '{print $5}')"
+              break
+            fi
+            echo "第 $i 次下载失败，重试…"
+            [ "$i" = "3" ] && { echo "WebView2 引导程序下载失败"; exit 1; }
+            sleep 3
+          done
+
+      - name: 打包 exe 与安装包
+        shell: bash
+        run: bash scripts/desktop/package-windows.sh
+
+      - name: 收集产物
+        shell: bash
+        run: |
+          mkdir -p out
+          cp bin/windows/ByteTV-*-setup.exe out/ || { echo "未找到安装包"; exit 1; }
+          ls -lh out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: out/*
+          if-no-files-found: error
+
+  # ---------- Linux：deb / rpm / AppImage（Wails v3 打包） ----------
+  # 可选：仅当 wails3 CLI 可用时执行，失败不阻断 Release。
+  linux:
+    needs: prepare
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: 安装系统依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgtk-3-dev libwebkit2gtk-4.1-dev \
+            libgstreamer1.0-dev libgstreamer-plugins-good1.0-dev libgstreamer-plugins-bad1.0-dev
+
+      - name: 安装前端依赖
+        working-directory: frontend
+        run: npm ci
+
+      - name: 构建 Linux 可执行文件
+        run: |
+          bash -c 'source scripts/desktop/common.sh && build_frontend'
+          go build -tags gtk3 -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o bin/bytetv ./cmd/bytetv
+          tar -C bin -czf "bin/ByteTV-${VERSION}-linux-amd64.tar.gz" bytetv
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: bin/ByteTV-*-linux-amd64.tar.gz
+          if-no-files-found: error
+
+  # ---------- 汇总到 Release ----------
+  release:
+    needs: [prepare, macos, windows, linux]
+    # linux 是 continue-on-error，用 always 保证仍能发布
+    if: always() && needs.prepare.outputs.is_release == 'true' && needs.macos.result == 'success' && needs.windows.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: 汇总产物
+        run: |
+          mkdir -p release
+          find artifacts -type f \( -name "*.dmg" -o -name "*.zip" -o -name "*.exe" -o -name "*.tar.gz" \) -exec cp {} release/ \;
+          echo "=== 将上传到 Release 的文件 ==="
+          ls -lh release/
+
+      - name: 生成校验和
+        working-directory: release
+        run: sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
+
+      - name: 创建 Release 并上传（官方 gh CLI）
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -e
+          TAG="v${VERSION}"
+
+          cat > notes.md <<'NOTES'
+          ## 下载
+
+          | 平台 | 文件 | 说明 |
+          | --- | --- | --- |
+          | macOS（Intel + Apple Silicon） | `ByteTV-VERSION-universal.dmg` | 通用二进制，双击安装 |
+          | macOS 便携版 | `ByteTV-VERSION-universal-app.zip` | 解压即用 |
+          | Windows x64 / arm64 | `ByteTV-VERSION-*-setup.exe` | 内置 WebView2 引导，缺失时自动安装 |
+          | Linux x64 | `ByteTV-VERSION-linux-amd64.tar.gz` | 需系统具备 WebKitGTK 4.1 |
+
+          各文件校验和见 `SHA256SUMS.txt`。
+
+          > 若 macOS 包未经 Apple 公证，首次打开需在「系统设置 → 隐私与安全性」中允许。
+          NOTES
+          sed -i "s/VERSION/${VERSION}/g" notes.md
+
+          # 已存在则补传，不存在则新建（tag 由 push 触发时已存在，手动触发时由 gh 自动创建）
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG 已存在，追加产物"
+            gh release upload "$TAG" release/* --clobber
+          else
+            gh release create "$TAG" \
+              --title "Byte TV ${TAG}" \
+              --notes-file notes.md \
+              --generate-notes \
+              release/*
+          fi
+
+          echo "=== 发布完成 ==="
+          gh release view "$TAG" --json url,assets --jq '.url, (.assets[] | "  \(.name)  \(.size) 字节")'

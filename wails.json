@@ -1,20 +1,11 @@
 {
-  "$schema": "https://wails.io/schemas/config.v2.json",
-  "name": "果果剧库",
-  "outputfilename": "juku",
-  "frontend:install": "",
-  "frontend:build": "",
-  "frontend:dev:watcher": "",
-  "frontend:dev:serverUrl": "auto",
-  "author": {
-    "name": "juku",
-    "email": "dev@local"
-  },
+  "$schema": "https://wails.io/schemas/config.v3.json",
+  "name": "Byte TV",
+  "outputfilename": "bytetv",
   "info": {
-    "companyName": "juku",
-    "productName": "果果剧库",
-    "productVersion": "1.0.0",
-    "copyright": "juku",
-    "comments": "果果剧库桌面观看客户端"
+    "companyName": "ByteTV",
+    "productName": "Byte TV",
+    "productVersion": "0.1.0",
+    "comments": "Byte TV 桌面客户端"
   }
 }

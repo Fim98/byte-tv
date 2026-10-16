@@ -383,16 +383,33 @@ bash scripts/build.sh
 
 ## Byte TV 桌面客户端
 
-`cmd/bytetv` 是 Byte TV 桌面客户端（Wails v3，锁定 `v3.0.0-beta.28`，需要 Go 1.25）。同一个进程里运行上面的 Go 后端（客户端模式：只监听 `127.0.0.1`，优先复用上次端口，启动令牌换成 HttpOnly Cookie），窗口直接加载本机地址，视频与接口都不经过 Wails 自定义协议。服务器版、Docker 与原 Wails v2 桌面窗口（根目录 `desktop_wails.go`）不受影响；`electron/` 保留作回退，不再是默认外壳。
+`cmd/bytetv` 是 Byte TV 桌面客户端（Wails v3，锁定 `v3.0.0-beta.28`，需要 Go 1.25）。同一个进程里运行上面的 Go 后端（客户端模式：只监听 `127.0.0.1`，优先复用上次端口，启动令牌换成 HttpOnly Cookie），窗口直接加载本机地址，视频与接口都不经过 Wails 自定义协议。
+
+界面按 **Claude Design System（CDS）** 重构：暖黑表面阶梯、陶土色 `#d97757` 强调、深浅双主题（侧栏底部一键切换，设置页可跟随系统）、Noto Sans SC + JetBrains Mono。样式全部用 Tailwind 工具类表达，令牌集中在 `frontend/tailwind.config.js` 与 `frontend/src/styles/tokens.css`。
 
 | 项目 | 位置 |
 | --- | --- |
-| 数据目录 | macOS `~/Library/Application Support/ByteTV`，Windows `%APPDATA%\ByteTV`（与 Electron 版相同；首次启动迁移旧的“果果剧库”目录），可用 `BYTETV_DATA` 覆盖 |
+| 数据目录 | macOS `~/Library/Application Support/ByteTV`，Windows `%APPDATA%\ByteTV`，可用 `BYTETV_DATA` 覆盖 |
 | 默认下载目录 | `~/ByteTV`（不可写时 `ByteTV Downloads`） |
 | 桌面偏好 | 数据目录下 `desktop_prefs.json`（主题、播放倍速/音量/画质、引导、关闭到托盘等），端口变化也不丢 |
 | 崩溃日志 | 数据目录 `logs/crash-*.log`、`logs/app.log` |
 
-原生能力：菜单栏/托盘（显示窗口、下载任务、退出，托盘提示进行中任务数）、关闭窗口留在后台（设置里可关）、单实例、下载或合并进行中退出前确认、`⌘/Ctrl+1–4` 前往首页/浏览/追剧/下载、`⌘/Ctrl+,` 设置、任务全部完成时系统通知、任务进行中阻止系统空闲睡眠（macOS IOPMAssertion / Windows SetThreadExecutionState）、选择下载目录、在访达/资源管理器中显示、原生全屏回退、自动更新（构建时注入更新源）、后台 panic 恢复与 30 秒健康看门狗。页面通过 `/api/desktop/native/*` 调用这些能力（`frontend/src/lib/desktop.js` 装配成与 Electron preload 相同的 `window.juku`）；桌面外壳内有 MSE 时 HLS 一律走 hls.js，原生 `<video>` 直连的地址附带只读媒体令牌，避免 macOS 原生 HLS 不带 Cookie。
+原生能力：菜单栏/托盘（显示窗口、下载任务、退出，托盘提示进行中任务数）、关闭窗口留在后台（设置里可关）、单实例、下载或合并进行中退出前确认、`⌘/Ctrl+1–4` 前往首页/浏览/追剧/下载、`⌘/Ctrl+,` 设置、任务全部完成时系统通知、任务进行中阻止系统空闲睡眠（macOS IOPMAssertion / Windows SetThreadExecutionState）、选择下载目录、在访达/资源管理器中显示、原生全屏回退、自动更新（构建时注入更新源）、后台 panic 恢复与 30 秒健康看门狗。页面通过 `/api/desktop/native/*` 调用这些能力（`frontend/src/lib/desktop.js` 装配成 `window.juku`）；桌面外壳内有 MSE 时 HLS 一律走 hls.js，原生 `<video>` 直连的地址附带只读媒体令牌，避免 macOS 原生 HLS 不带 Cookie。
+
+### 播放器交互
+
+播放器结构为「竖屏画面居中 + 上下控件栏」，周边留白随主题走（深色沉黑 / 浅色暖白 + 陶土环境光），**影像本体恒为暗调**——跟着主题变亮就不叫视频了。
+
+`Esc` 是**逐层返回**而非关闭，最外层不销毁播放会话：
+
+| 层级 | 行为 |
+| --- | --- |
+| 1 | 原生全屏中 → 退出全屏（浏览器/系统接管，页面拦不到） |
+| 2 | 选集抽屉或「更多」菜单展开 → 收起最上层 |
+| 3 | 播放器浮层 → 收成右下角**迷你窗**，画面继续播 |
+| 4 | 迷你窗 → 关闭并回到剧库（进度早已自动保存，可续播） |
+
+画中画 / 独立小窗是**独立动作**（`I` 键或迷你窗按钮），不由 Esc 触发。其余快捷键：空格 播放/暂停，`←`/`→` 快退/快进 5 秒，长按 `→` 临时 3×，`N`/`P` 切集，`M` 静音，`D` 弹幕，`F` 全屏。
 
 ### 开发与运行（macOS）
 
@@ -414,7 +431,7 @@ Linux 只用于开发和 CI：需要 `libgtk-3-dev libwebkit2gtk-4.1-dev` 与 GS
 
 ```bash
 # macOS universal（arm64 + x86_64）：bin/Byte TV.app 与 bin/ByteTV-<版本>-universal.dmg
-VERSION=1.1.0 task package:mac
+VERSION=0.1.0 task package:mac
 # 正式分发：Developer ID 签名 + 公证（二选一提供公证凭据）
 MAC_SIGN_IDENTITY="Developer ID Application: 名称 (TEAMID)" NOTARY_PROFILE=bytetv task package:mac
 MAC_SIGN_IDENTITY="..." APPLE_ID=me@example.com APPLE_TEAM_ID=TEAMID APPLE_APP_PASSWORD=xxxx-xxxx task package:mac
@@ -426,9 +443,29 @@ task package:windows
 
 未设置 `MAC_SIGN_IDENTITY` 时做 ad-hoc 签名，只适合本机。自动更新默认关闭，打包时设置 `BYTETV_UPDATE_URL`（Wails updater endpoint manifest，可用 `{{platform}}`/`{{arch}}` 占位）和 `BYTETV_UPDATE_PUBKEY`（ed25519 公钥 base64）启用。迁移背景与能力对照见 [docs/wails-migration-eval.md](docs/wails-migration-eval.md)。
 
-### Electron 回退
+### 自动发版（GitHub Actions）
 
-`electron/` 目录保持原样（`cd electron && npm ci && npm run dev`，打包 `npm run dist:mac` / `npm run dist:win`），后端兼容两种外壳：Electron 以子进程方式运行同一后端并通过 preload 注入 `window.juku`。
+`.github/workflows/release.yml` 负责三平台打包并发布到 GitHub Release，**复用 `scripts/desktop/` 下的同一套脚本**，不另起实现。
+
+```bash
+git tag v0.1.0 && git push origin v0.1.0     # 主要方式：推 v* 标签即触发
+```
+
+也可在 Actions → Release → Run workflow 手动触发（只产出 artifact，不发 Release）。
+
+| 平台 | Runner | 产物 |
+| --- | --- | --- |
+| macOS | `macos-14` | universal `.dmg` + `.app.zip`（`lipo` 校验含 arm64 与 x86_64） |
+| Windows | `windows-latest` | amd64 / arm64 的 NSIS `setup.exe` |
+| Linux | `ubuntu-latest` | `tar.gz`（需系统具备 WebKitGTK 4.1；失败不阻断发布） |
+
+Release 附带 `SHA256SUMS.txt` 校验和。macOS 签名与公证通过仓库 Secrets 配置，**未配置时自动降级为 ad-hoc 签名**，产物仍可用于本机测试：
+
+| Secret | 用途 |
+| --- | --- |
+| `MAC_SIGN_IDENTITY` | Developer ID 证书名；留空则 ad-hoc 签名 |
+| `APPLE_ID` / `APPLE_TEAM_ID` / `APPLE_APP_PASSWORD` | 公证凭据（也可用 `NOTARY_PROFILE`） |
+| `BYTETV_UPDATE_URL` / `BYTETV_UPDATE_PUBKEY` | 启用自动更新 |
 
 ## 常见问题
 
