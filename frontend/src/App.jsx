@@ -238,11 +238,11 @@ function ThemeToggle() {
 /* ---------------------------------------------------------------------------
    侧栏底部：左侧「设置」入口，右侧主题快捷切换（space-between 一排）
    --------------------------------------------------------------------------- */
-function SideFoot({ route }) {
+function SideFoot({ route, onNavigate }) {
   const on = route.path.startsWith("/settings")
   return (
     <div className="mt-auto flex items-center justify-between gap-2 p-2.5 shadow-[inset_0_1px_0_0_var(--hairline)]">
-      <a href="#/settings" className={`${navItemClass(on)} flex-1`}>
+      <a href="#/settings" onClick={onNavigate} className={`${navItemClass(on)} flex-1`}>
         <SlidersHorizontal className={`size-[18px] flex-none ${on ? "text-clay" : ""}`} strokeWidth={1.7} />
         设置
       </a>
@@ -261,6 +261,8 @@ export default function App() {
   const [fatal, setFatal] = useState(null)
   const [status, setStatus] = useState(null)
   const [player, setPlayer] = useState(null)
+  // 播放页收起为迷你窗时，底层页面要重新露出来，所以「是否迷你」由外壳持有
+  const [mini, setMini] = useState(false)
   const [toasts, setToasts] = useState([])
   const [notices, setNotices] = useState([])
   const [onboarding, setOnboarding] = useState(() => localStorage.getItem("juku.onboarded") !== "1")
@@ -272,7 +274,7 @@ export default function App() {
       setNotices((n) => [{ id, message, kind, at: new Date() }, ...n].slice(0, 50))
       setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3500)
     })
-    setPlayerOpener((request) => setPlayer(request))
+    setPlayerOpener((request) => { setMini(false); setPlayer(request) })
     initViewer().then(() => setReady(true)).catch(setFatal)
   }, [])
 
@@ -325,6 +327,10 @@ export default function App() {
   }
 
   const downloadCount = status?.activeDownloads || 0
+  // 播放中（且未收成迷你窗）时，内容区整体让位给播放页
+  const playing = Boolean(player) && !mini
+  // 播放中点侧栏：不结束会话，收成迷你窗继续播，页面同时露出
+  const leaveToPage = () => { if (player) setMini(true) }
 
   return (
     <div className="relative flex h-full bg-surface-0">
@@ -339,7 +345,7 @@ export default function App() {
             const on = route.path.startsWith(path) || (path === "/home" && route.path === "/")
             const count = badge === "downloads" ? downloadCount : 0
             return (
-              <a key={path} href={`#${path}`} className={navItemClass(on)}>
+              <a key={path} href={`#${path}`} onClick={leaveToPage} className={navItemClass(on)}>
                 <Icon className={`size-[18px] flex-none ${on ? "text-clay" : ""}`} strokeWidth={1.7} />
                 {label}
                 {count > 0 ? (
@@ -350,39 +356,50 @@ export default function App() {
           })}
         </nav>
 
-        <SideFoot route={route} />
+        <SideFoot route={route} onNavigate={leaveToPage} />
       </aside>
 
-      {/* ---------- 主区 ---------- */}
+      {/* ---------- 主区：页面与播放页同处一层，播放页不是盖住整窗的浮层 ---------- */}
       <main className="relative flex min-w-0 flex-1 flex-col">
-        <header className="glass drag relative z-20 flex h-[52px] flex-none items-center gap-2.5 px-[18px] pl-3.5">
-          <IconButton className="no-drag" onClick={() => history.back()} title="后退">
-            <ChevronLeft className="size-[18px]" strokeWidth={1.7} />
-          </IconButton>
-          <IconButton className="no-drag text-ink-muted opacity-55" onClick={() => history.forward()} title="前进">
-            <ChevronRight className="size-[18px]" strokeWidth={1.7} />
-          </IconButton>
-          <div className="no-drag"><SearchBox /></div>
+        {/* 播放中隐藏而非卸载：滚动位置、列表状态都留着；收成迷你窗后重新露出 */}
+        <div className={playing ? "hidden" : "flex min-h-0 flex-1 flex-col"}>
+          <header className="glass drag relative z-20 flex h-[52px] flex-none items-center gap-2.5 px-[18px] pl-3.5">
+            <IconButton className="no-drag" onClick={() => history.back()} title="后退">
+              <ChevronLeft className="size-[18px]" strokeWidth={1.7} />
+            </IconButton>
+            <IconButton className="no-drag text-ink-muted opacity-55" onClick={() => history.forward()} title="前进">
+              <ChevronRight className="size-[18px]" strokeWidth={1.7} />
+            </IconButton>
+            <div className="no-drag"><SearchBox /></div>
 
-          <span className="grow" />
+            <span className="grow" />
 
-          <span className="no-drag flex h-[26px] items-center gap-1.5 rounded-pill bg-surface-2 px-2.5 text-[11.5px] text-ink-secondary shadow-[inset_0_0_0_1px_var(--cds-border)]">
-            <StatusDot tone={status ? "ok" : "warn"} />
-            {status ? "红果源 · 正常" : "本机服务连接中"}
-          </span>
-          <IconButton className="no-drag" onClick={checkNew} title="检查新内容">
-            <RefreshCw className="size-[18px]" strokeWidth={1.7} />
-          </IconButton>
-          <div className="no-drag"><NoticeBell notices={notices} /></div>
-        </header>
+            <span className="no-drag flex h-[26px] items-center gap-1.5 rounded-pill bg-surface-2 px-2.5 text-[11.5px] text-ink-secondary shadow-[inset_0_0_0_1px_var(--cds-border)]">
+              <StatusDot tone={status ? "ok" : "warn"} />
+              {status ? "红果源 · 正常" : "本机服务连接中"}
+            </span>
+            <IconButton className="no-drag" onClick={checkNew} title="检查新内容">
+              <RefreshCw className="size-[18px]" strokeWidth={1.7} />
+            </IconButton>
+            <div className="no-drag"><NoticeBell notices={notices} /></div>
+          </header>
 
-        <div key={route.path} className="mask-page scroll-thin min-h-0 flex-1 overflow-y-auto px-[var(--page-x)] pt-[22px]">
-          {content}
-          <div className="h-8" />
+          <div key={route.path} className="mask-page scroll-thin min-h-0 flex-1 overflow-y-auto px-[var(--page-x)] pt-[22px]">
+            {content}
+            <div className="h-8" />
+          </div>
         </div>
-      </main>
 
-      {player ? <Player request={player} onClose={() => setPlayer(null)} /> : null}
+        {/* 播放页与内容区同级：占据 main 的剩余空间，侧栏始终可见可点 */}
+        {player ? (
+          <Player
+            request={player}
+            mini={mini}
+            onMiniChange={setMini}
+            onClose={() => { setPlayer(null); setMini(false) }}
+          />
+        ) : null}
+      </main>
 
       {/* ---------- Toast ---------- */}
       <div className="pointer-events-none absolute bottom-5 left-1/2 z-[70] flex -translate-x-1/2 flex-col items-center gap-2">

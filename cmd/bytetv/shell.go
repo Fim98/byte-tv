@@ -161,12 +161,13 @@ func mustJSON(v any) string { b, _ := json.Marshal(v); return string(b) }
 // ---- 主流程 ----
 
 func (s *shell) run() {
-	s.notify = notifications.New()
+	notifier, services := newNotificationService()
+	s.notify = notifier
 	s.app = application.New(application.Options{
 		Name:        "Byte TV",
 		Description: "Byte TV",
 		Icon:        appIconPNG(256),
-		Services:    []application.Service{application.NewService(s.notify)},
+		Services:    services,
 		Mac:         application.MacOptions{ApplicationShouldTerminateAfterLastWindowClosed: false},
 		Linux:       application.LinuxOptions{DisableQuitOnLastWindowClosed: true, ProgramName: "bytetv"},
 		Windows:     application.WindowsOptions{},
@@ -194,6 +195,10 @@ func (s *shell) run() {
 		URL:              s.url,
 		JS:               autotestJS(),
 		BackgroundColour: application.NewRGB(10, 10, 12),
+		// 关掉 WebView 自带的右键菜单（重载 / 检查元素）。这是浏览器功能，
+		// 产品里没有任何右键交互，弹出来只会让人以为漏了功能。
+		// Windows 由 Wails 原生屏蔽；macOS 的 WKWebView 菜单由前端 contextmenu 拦截（见 main.jsx）。
+		DefaultContextMenuDisabled: true,
 		Mac: application.MacWindow{
 			TitleBar: application.MacTitleBarHiddenInset,
 			Backdrop: application.MacBackdropNormal,
@@ -221,7 +226,7 @@ func (s *shell) run() {
 	go s.watchdog()
 	s.app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
 		go func() {
-			if runtime.GOOS == "darwin" {
+			if runtime.GOOS == "darwin" && s.notify != nil {
 				_, _ = s.notify.RequestNotificationAuthorization()
 			}
 		}()
@@ -429,6 +434,9 @@ func recoverInto(s *shell, name string) {
 }
 
 func (s *shell) sendNotification(title, body string) {
+	if s.notify == nil {
+		return
+	}
 	if title == "" {
 		title = "Byte TV"
 	}

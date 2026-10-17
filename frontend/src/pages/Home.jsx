@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { ChevronRight, Download, Play, Plus } from "lucide-react"
+import { ChevronRight, Download, Heart, Play } from "lucide-react"
 import { apiGet, apiPost } from "../api"
 import { Empty, ErrorBox, Button, ProgressBar, Segmented, SkeletonPoster, Tag, useAsync } from "../components/cds"
 import { PageHead, Poster, PosterGrid, Row } from "../components/poster"
@@ -60,22 +60,22 @@ function Hero({ items }) {
         <div className="mt-1.5 flex items-center gap-2">
           <Button
             variant="primary" size="lg" icon={Play}
-            className="h-[38px] gap-1.5"
+            className="h-[38px] gap-1.5 shadow-[0_4px_16px_rgba(0,0,0,0.3)]"
             onClick={() => play({ dramaId: drama.id, title, resume: true })}
           >
             立即播放
           </Button>
           <Button
             size="lg"
-            className="!bg-white/15 !text-white h-[38px] hover:!bg-white/25"
-            icon={Plus}
+            className="!bg-white/15 backdrop-blur-md !text-white h-[38px] hover:!bg-white/25 active:scale-95 transition-all"
+            icon={Heart}
             onClick={() => follow(drama.id)}
           >
             追剧
           </Button>
           <Button
             size="lg"
-            className="!bg-white/15 !text-white h-[38px] hover:!bg-white/25"
+            className="!bg-white/15 backdrop-blur-md !text-white h-[38px] hover:!bg-white/25 active:scale-95 transition-all"
             icon={Download}
             onClick={() => download(drama.id)}
           >
@@ -89,7 +89,7 @@ function Hero({ items }) {
           type="button"
           onClick={() => navigate(`/drama/${encodeURIComponent(drama.id)}`)}
           title={title}
-          className="absolute right-12 top-1/2 hidden h-[200px] w-[112px] -translate-y-1/2 overflow-hidden rounded-card shadow-film xl:block"
+          className="absolute right-12 top-1/2 hidden aspect-[9/16] h-[224px] -translate-y-1/2 overflow-hidden rounded-card shadow-film xl:block"
         >
           <img src={cover} alt="" className="size-full object-cover" />
         </button>
@@ -126,7 +126,7 @@ function HeroSkeleton() {
 }
 
 /* ---------------------------------------------------------------------------
-   继续观看：横向走廊，进度条为视觉主轴
+   继续观看：横向走廊，竖版 9:16 封面 + 进度条为视觉主轴
    --------------------------------------------------------------------------- */
 function ContinueCard({ item }) {
   const cover = coverOf(item)
@@ -135,16 +135,16 @@ function ContinueCard({ item }) {
     <button
       type="button"
       onClick={() => play({ dramaId: item.id, title: item.title, resume: true, fromHistory: true })}
-      className="w-full text-left"
+      className="group w-full text-left"
     >
-      <span className="relative block h-[130px] w-full overflow-hidden rounded-card bg-[#171614]">
+      <span className="relative block aspect-[9/16] w-full overflow-hidden rounded-card bg-[#171614]">
         {cover ? <img src={cover} alt="" loading="lazy" className="absolute inset-0 size-full object-cover" /> : null}
-        <span className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/80 to-transparent" />
-        <Tag className="absolute right-2 top-2 bg-black/50 text-white backdrop-blur-sm">
+        <span className="absolute inset-x-0 bottom-0 h-2/5 bg-gradient-to-t from-black/90 via-black/45 to-transparent" />
+        <Tag className="absolute right-1.5 top-1.5 h-[18px] bg-black/50 px-1.5 text-[10px] text-white backdrop-blur-sm">
           第 {item.episode || item.index} 集
         </Tag>
-        <span className="absolute inset-x-2 bottom-2">
-          <span className="mb-1.5 block truncate text-xs font-medium text-white [text-shadow:0_1px_6px_rgba(0,0,0,.7)]">
+        <span className="absolute inset-x-1.5 bottom-1.5">
+          <span className="mb-1.5 block truncate text-[11.5px] font-medium text-white [text-shadow:0_1px_6px_rgba(0,0,0,.7)]">
             {titleOf(item)}
           </span>
           <ProgressBar value={pct} className="bg-white/30" />
@@ -159,12 +159,23 @@ function ContinueCard({ item }) {
 }
 
 /* ---------------------------------------------------------------------------
+   走廊渲染上限。
+   注意这不是「可见数」：Row 的 mask-corridor 淡出区从容器宽度的 88% 开始，
+   只有内容真的溢出才能看到「最后一张渐隐」的效果 —— 不溢出就是一排平卡。
+   每张 150 + 间距 14 = 164px，需要几张才够溢出到淡出区（内容区 = 窗口 - 侧栏 228 - 页边距 52）：
+     1024 → 5 张；1280 → 7 张；1440 → 8 张；1680 → 9 张；1920 → 10 张；2560 → 14 张
+   取 16 张，2560 以内的窗口都能保证溢出；后端榜单单页 20 条、推荐 18 条，够用。
+   不出现横向滚动条，更多内容走标题栏的「完整榜单 / 查看全部」。
+   --------------------------------------------------------------------------- */
+const ROW_ITEMS = 16
+
+/* ---------------------------------------------------------------------------
    榜单走廊
    --------------------------------------------------------------------------- */
 function RankingRow() {
   const [board, setBoard] = useState("hongguo-hot")
   const state = useAsync((signal) => apiGet(`/api/ui/rankings?board=${board}&page=1`, { signal }), [board])
-  const items = (state.data?.items || []).slice(0, 10)
+  const items = (state.data?.items || []).slice(0, ROW_ITEMS)
 
   return (
     <Row
@@ -183,10 +194,10 @@ function RankingRow() {
       }
     >
       {state.loading
-        ? Array.from({ length: 5 }, (_, i) => <SkeletonPoster key={i} className="h-[132px]" />)
+        ? Array.from({ length: 8 }, (_, i) => <SkeletonPoster key={i} className="aspect-[9/16]" />)
         : items.map((item) => (
             <Poster
-              key={item.drama.id} drama={item.drama} rank={item.rank} size="sm"
+              key={item.drama.id} drama={item.drama} rank={item.rank}
               subtitle={item.metric ? item.metric : [episodesOf(item.drama) ? `全 ${episodesOf(item.drama)} 集` : ""].filter(Boolean).join(" · ")}
               onFollow={() => follow(item.drama.id)}
               onDownload={() => download(item.drama.id)}
@@ -198,30 +209,16 @@ function RankingRow() {
 
 /* ---------------------------------------------------------------------------
    分类推荐
+   渲染 ROW_ITEMS 张，靠遮罩自然渐隐（同榜单走廊）。
+   更多内容交给「查看全部」跳剧库对应题材，不在发现页翻页。
    --------------------------------------------------------------------------- */
 function RecommendRow() {
   const [genre, setGenre] = useState("short_play")
-  const [page, setPage] = useState({ items: [], offset: 0, sessionId: "", loading: false, error: null, hasMore: true })
-
-  const load = async (reset) => {
-    const base = reset ? { items: [], offset: 0, sessionId: "" } : page
-    setPage((p) => ({ ...p, ...base, loading: true, error: null }))
-    try {
-      const r = await apiPost("/api/ui/recommendations", {
-        genre, offset: base.offset, sessionId: base.sessionId,
-        seen: base.items.map((d) => d.id).slice(-500),
-      })
-      setPage({
-        items: [...base.items, ...(r.data || [])],
-        offset: r.nextOffset || 0, sessionId: r.sessionId || "",
-        hasMore: r.hasMore, loading: false, error: null,
-      })
-    } catch (error) {
-      setPage((p) => ({ ...p, loading: false, error }))
-    }
-  }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { load(true) }, [genre])
+  const state = useAsync(
+    (signal) => apiPost("/api/ui/recommendations", { genre, offset: 0, sessionId: "", seen: [] }, { signal }),
+    [genre],
+  )
+  const items = (state.data?.data || []).slice(0, ROW_ITEMS)
 
   return (
     <Row
@@ -229,15 +226,21 @@ function RecommendRow() {
       action={
         <div className="flex items-center gap-2.5">
           <Segmented value={genre} options={GENRES} onChange={setGenre} />
-          {page.hasMore ? (
-            <Button size="xs" variant="outline" disabled={page.loading} onClick={() => load(false)}>继续推荐</Button>
-          ) : null}
+          <button
+            type="button"
+            className="flex items-center gap-1 text-xs text-ink-secondary hover:text-clay"
+            onClick={() => navigate(`/browse?type=${genre}`)}
+          >
+            查看全部<ChevronRight className="size-3" />
+          </button>
         </div>
       }
     >
-      {page.loading && !page.items.length
-        ? Array.from({ length: 5 }, (_, i) => <SkeletonPoster key={i} className="h-[212px]" />)
-        : page.items.map((d) => (
+      {state.loading
+        ? Array.from({ length: 8 }, (_, i) => <SkeletonPoster key={i} className="aspect-[9/16]" />)
+        : state.error
+          ? <p className="text-[12px] text-ink-muted">推荐暂不可用，可切换题材重试。</p>
+          : items.map((d) => (
             <Poster
               key={d.id} drama={d}
               subtitle={[categoryOf(d), episodesOf(d) ? `共 ${episodesOf(d)} 集` : ""].filter(Boolean).join(" · ")}
@@ -246,40 +249,6 @@ function RecommendRow() {
             />
           ))}
     </Row>
-  )
-}
-
-/* ---------------------------------------------------------------------------
-   最新上线：两列紧凑列表
-   --------------------------------------------------------------------------- */
-function LatestGrid({ items }) {
-  return (
-    <div className="grid grid-cols-2 gap-2.5">
-      {items.map((d) => {
-        const cover = coverOf(d)
-        const title = titleOf(d)
-        return (
-          <div key={d.id} className="oncard flex items-center gap-3 rounded-card bg-surface-2 p-2.5 shadow-panel">
-            <button
-              type="button"
-              onClick={() => navigate(`/drama/${encodeURIComponent(d.id)}`)}
-              className="relative h-14 w-[42px] flex-none overflow-hidden rounded-xs bg-[#171614]"
-            >
-              {cover ? <img src={cover} alt="" loading="lazy" className="size-full object-cover" /> : null}
-            </button>
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-[12.5px] font-medium text-ink">{title}</div>
-              <div className="mt-0.5 truncate text-[11px] text-ink-muted">
-                {[categoryOf(d), releaseText(d.releaseStatus), episodesOf(d) ? `共 ${episodesOf(d)} 集` : ""].filter(Boolean).join(" · ")}
-              </div>
-            </div>
-            <Button size="xs" variant="outline" className="flex-none" icon={Plus} onClick={() => follow(d.id)}>
-              追剧
-            </Button>
-          </div>
-        )
-      })}
-    </div>
   )
 }
 
@@ -311,22 +280,19 @@ export default function Home() {
           title="追剧有新集" en="New"
           action={<a className="flex items-center gap-1 text-xs text-ink-secondary hover:text-clay" href="#/following">全部追剧<ChevronRight className="size-3" /></a>}
         >
-          {newItems.map((f) => <Poster key={f.id} drama={f} size="sm" badge={`新增 ${f.newEpisodes} 集`} />)}
+          {newItems.map((f) => (
+            <Poster
+              key={f.id} drama={f} isFollowing={true}
+              badge={`新增 ${f.newEpisodes} 集`}
+              onFollow={() => follow(f.id)}
+              onDownload={() => download(f.id)}
+            />
+          ))}
         </Row>
       ) : null}
 
       <RankingRow />
       <RecommendRow />
-
-      {hotItems.length >= 12 ? (
-        <section>
-          <div className="mb-3 flex items-center gap-2.5">
-            <h3 className="text-sm font-medium tracking-[-.015em] text-ink">最新上线</h3>
-            <span className="text-[10.5px] uppercase tracking-[.08em] text-ink-muted">Latest</span>
-          </div>
-          <LatestGrid items={hotItems.slice(10, 16)} />
-        </section>
-      ) : null}
 
       {(data.local || []).length ? (
         <section>
@@ -336,7 +302,13 @@ export default function Home() {
             <a className="flex items-center gap-1 text-xs text-ink-secondary hover:text-clay" href="#/downloads">下载管理<ChevronRight className="size-3" /></a>
           </div>
           <PosterGrid>
-            {data.local.slice(0, 12).map((d) => <Poster key={d.id} drama={d} size="sm" />)}
+            {data.local.slice(0, 12).map((d) => (
+              <Poster
+                key={d.id} drama={d}
+                onFollow={() => follow(d.id)}
+                onDownload={() => download(d.id)}
+              />
+            ))}
           </PosterGrid>
         </section>
       ) : null}

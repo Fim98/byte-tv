@@ -207,7 +207,7 @@ export default function Browse({ route }) {
       {/* ---------- 海报网格 ---------- */}
       <PosterGrid>
         {library.loading && !all.length
-          ? Array.from({ length: 12 }, (_, i) => <SkeletonPoster key={i} className="h-[212px]" />)
+          ? Array.from({ length: 12 }, (_, i) => <SkeletonPoster key={i} className="aspect-[9/16]" />)
           : results.slice(0, limit).map((d) => (
               <Poster
                 key={d.id} drama={d}

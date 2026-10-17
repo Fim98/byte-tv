@@ -53,10 +53,15 @@ func randomToken() string {
 
 func main() {
 	// 打包脚本用：生成 PNG / ICO 图标，免在仓库里放二进制素材。
-	if len(os.Args) > 3 && os.Args[1] == "-gen-icon" {
+	// -gen-icon 输出满幅图标（Windows 任务栏 / .ico）；-gen-icon-mac 额外把
+	// squircle 缩到 824 居中，四周留白 100，符合 macOS 应用图标规范。
+	if len(os.Args) > 3 && (os.Args[1] == "-gen-icon" || os.Args[1] == "-gen-icon-mac") {
 		var size int
 		fmt.Sscan(os.Args[2], &size)
 		data := appIconPNG(size)
+		if os.Args[1] == "-gen-icon-mac" {
+			data = appIconMacOSPNG(size)
+		}
 		if filepath.Ext(os.Args[3]) == ".ico" {
 			data = icoFromPNG(appIconPNG(256))
 		}
@@ -73,11 +78,14 @@ func main() {
 	_ = os.MkdirAll(crashLog, 0o755)
 
 	backendArgs := []string{os.Args[0], "-client", "-client-watch-stdin=false", "-data-dir", dataDir}
-	if sub, err := fs.Sub(uiFS, "ui"); err == nil {
+	// 前端来源优先级：BYTETV_UI_DIR（开发用磁盘产物）> 二进制内嵌的 ui。
+	// 开发时目录里可能还留着上次 build 的旧产物，必须先看环境变量，
+	// 否则改了前端却看不到任何变化。
+	if dev := os.Getenv("BYTETV_UI_DIR"); dev != "" {
+		backendArgs = append(backendArgs, "-client-ui", dev)
+	} else if sub, err := fs.Sub(uiFS, "ui"); err == nil {
 		if _, statErr := fs.Stat(sub, "index.html"); statErr == nil {
 			app.ClientUIFS = sub
-		} else if dev := os.Getenv("BYTETV_UI_DIR"); dev != "" {
-			backendArgs = append(backendArgs, "-client-ui", dev)
 		} else {
 			log.Println("警告：二进制未嵌入前端（先运行 task build:frontend 或设置 BYTETV_UI_DIR）")
 		}

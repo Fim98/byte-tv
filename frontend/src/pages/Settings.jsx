@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { FolderOpen, HardDrive, Palette, Play, RefreshCw, Wifi } from "lucide-react"
+import { FolderOpen } from "lucide-react"
 import { apiGet, apiPost, native } from "../api"
 import { Button, Card, ErrorBox, Segmented, StatusDot, Switch, Tag, toast } from "../components/cds"
 import { pickDirectory, revealPath } from "../components/directory"
@@ -7,11 +7,11 @@ import { getTheme, setTheme } from "../lib/theme"
 
 // 设置分节：只保留用户能理解的项。底层实现（转码引擎、会话上限、并发额度）不出现在界面。
 const SECTIONS = [
-  { key: "general", label: "外观与窗口", icon: Palette },
-  { key: "playback", label: "播放", icon: Play },
-  { key: "storage", label: "下载与存储", icon: HardDrive },
-  { key: "network", label: "网络", icon: Wifi },
-  { key: "about", label: "关于", icon: RefreshCw },
+  { key: "general", label: "外观与窗口" },
+  { key: "playback", label: "播放" },
+  { key: "storage", label: "下载与存储" },
+  { key: "network", label: "网络" },
+  { key: "about", label: "关于" },
 ]
 const THEMES = [["dark", "深色"], ["light", "浅色"], ["system", "跟随系统"]]
 
@@ -226,49 +226,27 @@ export default function Settings({ section = "", status, onChanged }) {
   if (!config) return <ErrorBox error={error} />
 
   return (
-    <div className="grid grid-cols-[198px_1fr] items-start gap-5" ref={gridRef}>
-      {/* 左侧分节导航 */}
-      <nav className="flex flex-col gap-px">
-        {SECTIONS.map(({ key, label, icon: Icon }) => {
-          const on = key === section
-          return (
-            <a
-              key={key}
-              href={`#/settings/${key}`}
-              className={`flex h-8 items-center gap-2.5 rounded-sm px-2.5 text-[12.5px] transition-colors duration-[180ms] ease-out ${
-                on ? "bg-[var(--cds-fill-ghost-selected)] font-medium text-ink" : "text-ink-secondary hover:bg-[var(--cds-fill-ghost-hover)] hover:text-ink"
-              }`}
-            >
-              <Icon className={`size-3.5 flex-none ${on ? "text-clay" : ""}`} strokeWidth={1.7} />
-              {label}
-            </a>
-          )
-        })}
-      </nav>
+    <div className="flex flex-col gap-4" ref={gridRef}>
+      {SECTIONS.map(({ key, label }) => (
+        <section
+          key={key}
+          id={`set-${key}`}
+          className={`scroll-mt-4 ${key === section ? "rounded-lg shadow-[0_0_0_1px_var(--cds-border-strong),var(--cds-shadow-sm)]" : ""}`}
+        >
+          <Card className="px-4 py-1">
+            <div className="flex items-baseline gap-2.5 pb-1 pt-4">
+              <h3 className="text-sm font-medium tracking-[-.015em] text-ink">{label}</h3>
+            </div>
+            {body(key)}
+          </Card>
+        </section>
+      ))}
 
-      {/* 右侧表单 */}
-      <div className="flex flex-col gap-4">
-        {SECTIONS.map(({ key, label }) => (
-          <section
-            key={key}
-            id={`set-${key}`}
-            className={`scroll-mt-4 ${key === section ? "rounded-lg shadow-[0_0_0_1px_var(--cds-border-strong),var(--cds-shadow-sm)]" : ""}`}
-          >
-            <Card className="px-4 py-1">
-              <div className="flex items-baseline gap-2.5 pb-1 pt-4">
-                <h3 className="text-sm font-medium tracking-[-.015em] text-ink">{label}</h3>
-              </div>
-              {body(key)}
-            </Card>
-          </section>
-        ))}
-
-        <div className="flex items-center gap-2 px-1 text-[11px] text-ink-muted">
-          <StatusDot tone={status?.clientMode ? "ok" : "warn"} />
-          {status?.clientMode ? "本机所有者模式 · 无需登录" : "非客户端模式"}
-          <span className="grow" />
-          设置保存在本机数据目录，修改后立即生效
-        </div>
+      <div className="flex items-center gap-2 px-1 text-[11px] text-ink-muted">
+        <StatusDot tone={status?.clientMode ? "ok" : "warn"} />
+        {status?.clientMode ? "本机所有者模式 · 无需登录" : "非客户端模式"}
+        <span className="grow" />
+        设置保存在本机数据目录，修改后立即生效
       </div>
     </div>
   )

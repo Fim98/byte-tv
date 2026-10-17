@@ -47,14 +47,10 @@
 .no-drag { cursor: auto; }
 
 /* macOS 沉浸式标题栏（MacTitleBarHiddenInset）：系统交通灯由窗口原生绘制、浮在内容左上角。
-   侧栏顶端让出等高留白，既不重绘红绿灯，也不让导航被压住。其他平台有原生标题栏，不留白。 */
+   侧栏顶端让出等高留白，既不重绘红绿灯，也不让导航被压住。其他平台有原生标题栏，不留白。
+   交通灯只在侧栏区域内，内容区（含播放页）永远不会与它重叠，因此不需要额外的安全区变量。 */
 .titlebar-space { display: none; }
 html[data-os="darwin"] .titlebar-space { display: block; height: 52px; }
-
-/* 交通灯安全区高度：浮层（如播放器）需要据此下移，避免盖住原生交通灯。
-   非 macOS 为 0，浮层照常贴顶。 */
-:root { --titlebar-inset: 0px; }
-html[data-os="darwin"] { --titlebar-inset: 52px; }
 
 @layer components {
   /* 玻璃质感：backdrop-filter 需带浏览器前缀，写成组件类更稳 */
@@ -62,11 +58,6 @@ html[data-os="darwin"] { --titlebar-inset: 52px; }
     background: var(--glass);
     backdrop-filter: saturate(180%) blur(20px);
     -webkit-backdrop-filter: saturate(180%) blur(20px);
-  }
-  .glass-heavy {
-    background: color-mix(in srgb, var(--cds-surface-1) 88%, transparent);
-    backdrop-filter: blur(26px);
-    -webkit-backdrop-filter: blur(26px);
   }
   /* 单笔画纪律：卡片内的次级按钮不再叠边框 */
   .oncard .btn-outline { box-shadow: none; background: var(--cds-fill-secondary); }

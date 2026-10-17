@@ -20,7 +20,7 @@ function HistoryRow({ item, onPlay, onRemove }) {
       <button
         type="button"
         onClick={() => navigate(`/drama/${encodeURIComponent(item.id)}`)}
-        className="relative h-[58px] w-10 flex-none overflow-hidden rounded-xs bg-[#171614]"
+        className="relative aspect-[9/16] w-10 flex-none overflow-hidden rounded-xs bg-[#171614]"
       >
         {cover ? <img src={cover} alt="" loading="lazy" className="size-full object-cover" /> : null}
       </button>
@@ -163,10 +163,13 @@ export default function Following({ tab }) {
                 <div key={f.id} className="min-w-0">
                   <Poster
                     drama={f}
+                    isFollowing={true}
                     badge={f.newEpisodes ? `新增 ${f.newEpisodes} 集` : f.completed ? "已看" : ""}
                     progress={h && total ? (h.index / total) * 100 : null}
                     subtitle={h ? `看到第 ${h.index} 集${total ? ` · 共 ${total} 集` : ""}` : "还没看"}
                     onPlay={() => play({ dramaId: f.id, title: f.title, resume: Boolean(h) })}
+                    onFollow={async () => { await follow(f.id, false); state.reload() }}
+                    onDownload={() => download(f.id)}
                   />
                   <div className="mt-1 flex items-center gap-3">
                     <button

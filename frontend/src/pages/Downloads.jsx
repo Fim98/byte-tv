@@ -194,7 +194,7 @@ export default function Downloads({ status }) {
                   {open[g.id] ? <ChevronDown className="size-4" strokeWidth={1.7} /> : <ChevronRight className="size-4" strokeWidth={1.7} />}
                 </IconButton>
 
-                <span className="relative h-[52px] w-[38px] flex-none overflow-hidden rounded-xs bg-[#171614]">
+                <span className="relative aspect-[9/16] w-[38px] flex-none overflow-hidden rounded-xs bg-[#171614]">
                   {covers[g.id] ? <img src={covers[g.id]} alt="" loading="lazy" className="size-full object-cover" /> : null}
                 </span>
 

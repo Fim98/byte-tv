@@ -11,8 +11,8 @@ import { PLAYER_RATES, applyPlayerPrefs, getPlayerPrefs, setPlayerPrefs } from "
 import { cn } from "../lib/utils"
 
 // 播放器：完整复用 /api/ui/playback/* 协议（open → plan / hls/open → progress / control / danmaku / prefetch）。
-// 结构：竖屏画面居中 + 上下主题化控件栏。影像本体恒为暗调，周边留白随主题走。
-// Esc 逐层返回：全屏 → 收起抽屉 → 收成迷你窗（继续播）→ 关闭。
+// 结构：画面列（顶栏/画面/底栏）+ 选集栏，两者同层挤压；迷你窗与全屏才是浮态。
+// Esc 逐层返回：全屏 → 收起选集栏 → 收成迷你窗（继续播）→ 关闭。
 const RATES = PLAYER_RATES
 const PAGE = 30
 
@@ -31,18 +31,20 @@ function capabilities(video) {
   }
 }
 
-/* 控件按钮：与主题同色系，压在影像上的那组除外 */
-function Ctrl({ active, dim, className, children, ...props }) {
+/* 控件按钮：与主题同色系；onVideo 变体用于压在黑色画面上的顶/底栏 */
+function Ctrl({ active, dim, onVideo, className, children, ...props }) {
   return (
     <button
       type="button"
       className={cn(
-        "flex h-[30px] items-center gap-1.5 rounded-sm px-2.5 text-xs text-ink-secondary",
-        "transition-[background-color,color] duration-[160ms] ease-out",
-        "hover:bg-[var(--cds-fill-ghost-hover)] hover:text-ink",
+        "flex h-8 items-center gap-1.5 rounded-pill px-2.5 text-xs",
+        "transition-[background-color,color,box-shadow] duration-[160ms] ease-out",
         "focus-visible:outline-none focus-visible:shadow-focus disabled:opacity-40",
-        active && "bg-[var(--cds-fill-ghost-selected)] text-ink",
-        dim && "text-ink-muted",
+        onVideo
+          ? "text-white/70 hover:bg-white/[.14] hover:text-white"
+          : "text-ink-secondary hover:bg-[var(--cds-fill-ghost-hover)] hover:text-ink",
+        active && (onVideo ? "bg-white/[.18] text-white" : "bg-[var(--cds-fill-ghost-selected)] text-ink"),
+        dim && (onVideo ? "text-white/40" : "text-ink-muted"),
         className,
       )}
       {...props}
@@ -53,10 +55,129 @@ function Ctrl({ active, dim, className, children, ...props }) {
 }
 
 function SquareCtrl({ className, children, ...props }) {
-  return <Ctrl className={cn("w-[30px] justify-center px-0", className)} {...props}>{children}</Ctrl>
+  return <Ctrl className={cn("w-8 justify-center px-0", className)} {...props}>{children}</Ctrl>
 }
 
-export default function Player({ request, onClose }) {
+/* ---------------------------------------------------------------------------
+   可拖拽滑轨：进度条与音量条共用。value / buffered 均为 0..1 的比例。
+   交互对齐 video.js：按下即跳转、拖动实时跟手、悬停浮出时间气泡。
+   --------------------------------------------------------------------------- */
+function Scrub({ value, buffered = 0, onChange, className, height = "h-[3px]", activeHeight = "group-hover:h-[5px]", fill = "bg-clay", thumb = true, onHoverChange }) {
+  const railRef = useRef(null)
+  const [dragging, setDragging] = useState(false)
+  const ratioAt = (clientX) => {
+    const rect = railRef.current?.getBoundingClientRect()
+    if (!rect?.width) return 0
+    return Math.min(1, Math.max(0, (clientX - rect.left) / rect.width))
+  }
+  const hover = (r) => onHoverChange?.(r)
+  return (
+    <div
+      ref={railRef}
+      role="slider"
+      tabIndex={0}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round(value * 100)}
+      className={cn("group relative flex cursor-pointer touch-none select-none items-center", className)}
+      onPointerDown={(e) => {
+        e.preventDefault()
+        e.currentTarget.setPointerCapture(e.pointerId)
+        setDragging(true)
+        hover(ratioAt(e.clientX))
+        onChange(ratioAt(e.clientX))
+      }}
+      onPointerMove={(e) => {
+        const r = ratioAt(e.clientX)
+        hover(r)
+        if (dragging) onChange(r)
+      }}
+      onPointerUp={(e) => {
+        if (dragging) onChange(ratioAt(e.clientX))
+        setDragging(false)
+        e.currentTarget.releasePointerCapture?.(e.pointerId)
+      }}
+      onPointerCancel={() => setDragging(false)}
+      onPointerLeave={() => { if (!dragging) hover(null) }}
+      onKeyDown={(e) => {
+        // 自管方向键，避免与全局快捷键（±5 秒 / 音量）重复触发
+        if (e.key === "ArrowLeft") { e.preventDefault(); e.stopPropagation(); onChange(Math.max(0, value - 0.05)) }
+        if (e.key === "ArrowRight") { e.preventDefault(); e.stopPropagation(); onChange(Math.min(1, value + 0.05)) }
+      }}
+    >
+      <div className={cn("relative w-full rounded-pill bg-white/20 transition-[height] duration-150 ease-out", height, activeHeight)}>
+        {buffered > value ? (
+          <span className="absolute inset-y-0 left-0 rounded-pill bg-white/25" style={{ width: `${buffered * 100}%` }} />
+        ) : null}
+        <span className={cn("absolute inset-y-0 left-0 rounded-pill", fill)} style={{ width: `${value * 100}%` }} />
+      </div>
+      {thumb ? (
+        <span
+          className={cn(
+            "pointer-events-none absolute size-[13px] -translate-x-1/2 rounded-full bg-white",
+            "shadow-[0_0_0_3px_rgba(0,0,0,.55),0_2px_6px_rgba(0,0,0,.45)]",
+            "opacity-0 transition-[opacity,transform] duration-150 ease-out group-hover:opacity-100",
+            dragging && "scale-110 opacity-100",
+          )}
+          style={{ left: `${value * 100}%` }}
+        />
+      ) : null}
+    </div>
+  )
+}
+
+/* 进度条：整行可拖，悬停时浮出目标时间 */
+function Progress({ position, duration, buffered, onSeek }) {
+  const [hover, setHover] = useState(null)
+  const pct = duration > 0 ? Math.min(1, Math.max(0, position / duration)) : 0
+  const bufPct = duration > 0 ? Math.min(1, Math.max(0, buffered / duration)) : 0
+  return (
+    <div className="relative flex flex-1 items-center">
+      <Scrub
+        value={pct} buffered={bufPct} onChange={onSeek} onHoverChange={setHover}
+        className="h-7 w-full"
+      />
+      {hover !== null && duration > 0 ? (
+        <span
+          className="tnum pointer-events-none absolute -top-6 z-10 -translate-x-1/2 rounded-xs bg-black/85 px-1.5 py-0.5 text-[11px] text-white shadow-[0_2px_8px_rgba(0,0,0,.5)]"
+          style={{ left: `${hover * 100}%` }}
+        >
+          {formatTime(hover * duration)}
+        </span>
+      ) : null}
+    </div>
+  )
+}
+
+/* 音量：悬停时滑杆从图标右侧展开（video.js 的经典交互） */
+function VolumeCtrl({ muted, volume, onToggle, onChange }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div
+      className="flex items-center"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+      onFocus={() => setOpen(true)}
+      onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setOpen(false) }}
+    >
+      <SquareCtrl onVideo title="静音 (M)" onClick={onToggle}>
+        {muted || volume === 0
+          ? <VolumeX className="size-[18px]" strokeWidth={1.7} />
+          : <Volume2 className="size-[18px]" strokeWidth={1.7} />}
+      </SquareCtrl>
+      <div className={cn("overflow-hidden transition-all duration-200 ease-out", open ? "w-[82px] opacity-100" : "w-0 opacity-0")}>
+        <div className="px-2">
+          <Scrub
+            value={muted ? 0 : volume} onChange={onChange}
+            className="h-7" height="h-[3px]" activeHeight="group-hover:h-[4px]" fill="bg-white"
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export default function Player({ request, mini, onMiniChange, onClose }) {
   const videoRef = useRef(null)
   const rootRef = useRef(null)
   const hlsRef = useRef(null)
@@ -93,8 +214,14 @@ export default function Player({ request, onClose }) {
       setVideoAspect(v.videoWidth / v.videoHeight)
     }
   }
-  const [drawer, setDrawer] = useState(true)
+  const [drawer, setDrawer] = useState(() => localStorage.getItem("juku.player.drawer") !== "0")
   const [drawerPage, setDrawerPage] = useState(null) // null = 跟随当前集所在分页
+  // 选集栏宽度可拖拽调整（260–460），跨会话保留
+  const [drawerWidth, setDrawerWidth] = useState(() => {
+    const saved = Number(localStorage.getItem("juku.player.drawerWidth"))
+    return saved >= 260 && saved <= 460 ? saved : 320
+  })
+  const [containerWidth, setContainerWidth] = useState(0)
   const [jumpText, setJumpText] = useState("")
   const [danmakuOn, setDanmakuOn] = useState(() => localStorage.getItem("juku.danmaku") !== "0")
   const [danmaku, setDanmaku] = useState([])
@@ -103,8 +230,9 @@ export default function Player({ request, onClose }) {
   const [boost, setBoost] = useState(false)
   const [qualities, setQualities] = useState([])
   const [quality, setQuality] = useState(0) // 本集实际画质；用户偏好在 playerPrefs.quality
-  const [mini, setMini] = useState(false)   // 收起为右下角迷你窗
-  // 原生全屏状态：全屏时交通灯隐藏，浮层可贴顶；非全屏需让出 macOS 交通灯位
+  // 收起为右下角迷你窗。状态由外壳持有：迷你窗时底层页面要重新露出。
+  const setMini = onMiniChange
+  // 原生全屏状态：全屏时播放页脱离内容区（fixed），否则它就是内容区里的一个页面
   const [fs, setFs] = useState(() => Boolean(document.fullscreenElement))
   const [menu, setMenu] = useState(false)
   const episodes = opened?.episodes || []
@@ -344,14 +472,15 @@ export default function Player({ request, onClose }) {
   }, [])
 
   /* ---------------------------------------------------------------------------
-     Esc 逐层返回：全屏 → 抽屉 → 迷你窗 → 关闭。
+     Esc 逐层返回：全屏 → 选集栏/菜单 → 迷你窗 → 关闭。
      最外层不销毁播放会话；进度早已自动保存，可续播。
      --------------------------------------------------------------------------- */
   const escapeLayer = useCallback(() => {
     if (document.fullscreenElement) { document.exitFullscreen(); setFs(false); return }
     if (fs) { native?.toggleFullScreen?.(); setFs(false); return }
     if (menu) { setMenu(false); return }
-    if (drawer && episodes.length) { setDrawer(false); return }
+    // 迷你窗里选集栏不可见，不要为它空打一次 Esc
+    if (!mini && drawer && episodes.length) { setDrawer(false); return }
     if (!mini) { setMini(true); return }
     onClose()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -399,462 +528,524 @@ export default function Player({ request, onClose }) {
 
   useEffect(() => localStorage.setItem("juku.danmaku", danmakuOn ? "1" : "0"), [danmakuOn])
   useEffect(() => localStorage.setItem("juku.autonext", autoNext ? "1" : "0"), [autoNext])
+  useEffect(() => localStorage.setItem("juku.player.drawer", drawer ? "1" : "0"), [drawer])
+  useEffect(() => localStorage.setItem("juku.player.drawerWidth", String(drawerWidth)), [drawerWidth])
+
+  /* ---------------------------------------------------------------------------
+     选集栏是画面的兄弟列（挤压分配宽度）。窗口不够宽时不再挤压，降级为覆盖式，
+     否则视频会被压成一条竖缝。量的是内容区（父容器）宽度，不能量播放器自己 ——
+     开合选集栏会改变播放器宽度，量自己会形成反馈环。
+     --------------------------------------------------------------------------- */
+  useEffect(() => {
+    const el = rootRef.current?.parentElement
+    if (mini || !el || typeof ResizeObserver === "undefined") return
+    const observer = new ResizeObserver(([entry]) => setContainerWidth(entry.contentRect.width))
+    observer.observe(el)
+    // 首次立即量一次，否则拖窗口前拿不到宽度（overlay 判断会失效）
+    setContainerWidth(el.getBoundingClientRect().width)
+    return () => observer.disconnect()
+  }, [mini])
+
+  // 选集栏宽度拖拽：面板在右侧，鼠标左移变宽
+  const resizeRef = useRef(null)
+  const startResize = (e) => {
+    e.preventDefault()
+    e.currentTarget.setPointerCapture(e.pointerId)
+    resizeRef.current = { x: e.clientX, width: drawerWidth }
+  }
+  const moveResize = (e) => {
+    if (!resizeRef.current) return
+    const next = resizeRef.current.width - (e.clientX - resizeRef.current.x)
+    setDrawerWidth(Math.min(460, Math.max(260, Math.round(next))))
+  }
+  const endResize = (e) => {
+    resizeRef.current = null
+    e.currentTarget.releasePointerCapture?.(e.pointerId)
+  }
 
   const current = episodes[index - 1]
   const pct = duration ? Math.min(100, (position / duration) * 100) : 0
-  const bufPct = duration ? Math.min(100, (buffered / duration) * 100) : 0
   const hideChrome = idle && playing && !mini
 
   /* ---------------------------------------------------------------------------
-     迷你窗：播放会话不销毁，仅收敛呈现
+     完整播放页
+     层级约定：画面区与选集栏是同一层的兄弟列，开合时互相挤压（flex 分配宽度），
+     而不是面板浮在画面上。只有迷你窗、全屏、菜单这些「用户显式选择的浮态」才用
+     absolute / fixed。
      --------------------------------------------------------------------------- */
-  if (mini) {
-    return (
-      <div
-        ref={rootRef}
-        className="absolute bottom-4 right-4 z-[60] w-[178px] animate-fade-up overflow-hidden rounded-lg bg-[#0b0b0c] shadow-[0_0_0_1px_var(--cds-border-strong),0_18px_40px_-12px_var(--film-shadow),0_4px_14px_rgba(0,0,0,.24)]"
-      >
-        <div className="group relative overflow-hidden" style={{ aspectRatio: videoAspect }}>
-          <video
-            ref={videoRef}
-            playsInline
-            className="size-full object-contain"
-            onLoadStart={apply}
-            onLoadedMetadata={applyMeta}
-            onDurationChange={apply}
-            onRateChange={(e) => { const want = boostRef.current ? 3 : getPlayerPrefs().rate; if (e.currentTarget.playbackRate !== want) apply() }}
-            onPlay={() => { setPlaying(true); setStatus("正在播放") }}
-            onPause={() => { setPlaying(false); saveProgress(false) }}
-            onWaiting={() => setStatus("缓冲中…")}
-            onPlaying={() => { apply(); setStatus("正在播放"); setError("") }}
-            onTimeUpdate={(e) => {
-              const v = e.currentTarget
-              setPosition(v.currentTime || 0)
-              if (Number.isFinite(v.duration)) setDuration(v.duration)
-              if (v.buffered.length) setBuffered(v.buffered.end(v.buffered.length - 1))
-              if (!v.paused && v.readyState >= 3) setError((msg) => (msg ? "" : msg))
-            }}
-            onError={(e) => { const v = e.currentTarget; if (!v.currentSrc && !v.getAttribute("src")) return; setError("视频加载失败，可重试") }}
-            onEnded={() => { saveProgress(true); if (autoNext && index < episodes.length) playEpisode(index + 1) }}
-          />
-
-          {/* 右上角：画中画（独立小窗）· 展开回播放器 · 关闭 */}
-          <div className="absolute right-1.5 top-1.5 flex gap-1.5">
-            {document.pictureInPictureEnabled ? (
-              <button
-                type="button" title="画中画 · 独立小窗"
-                onClick={() => videoRef.current?.requestPictureInPicture().catch(() => {})}
-                className="grid size-6 place-items-center rounded-xs bg-black/60 text-white backdrop-blur-md hover:bg-black/80"
-              >
-                <PictureInPicture2 className="size-3" strokeWidth={1.8} />
-              </button>
-            ) : null}
-            <button
-              type="button" title="展开回播放器"
-              onClick={() => setMini(false)}
-              className="grid size-6 place-items-center rounded-xs bg-black/60 text-white backdrop-blur-md hover:bg-black/80"
-            >
-              <Expand className="size-3" strokeWidth={1.8} />
-            </button>
-            <button
-              type="button" title="关闭（Esc）"
-              onClick={onClose}
-              className="grid size-6 place-items-center rounded-xs bg-black/60 text-white backdrop-blur-md hover:bg-black/80"
-            >
-              <X className="size-3" strokeWidth={1.8} />
-            </button>
-          </div>
-
-          {/* 中央播放/暂停 */}
-          <button
-            type="button" onClick={toggle} title={playing ? "暂停" : "播放"}
-            className="absolute left-1/2 top-1/2 grid size-9 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-pill bg-black/45 text-white backdrop-blur-md shadow-[inset_0_0_0_1px_rgba(255,255,255,.2)] transition-opacity duration-200"
-          >
-            {playing ? <Pause className="size-3.5" fill="currentColor" strokeWidth={0} /> : <Play className="size-3.5" fill="currentColor" strokeWidth={0} />}
-          </button>
-
-          {/* 标题与进度 */}
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent px-2.5 pb-2.5 pt-7">
-            <div className="truncate text-[11px] font-medium text-white [text-shadow:0_1px_6px_rgba(0,0,0,.7)]">
-              {opened?.title || request.title || "正在播放"} · 第 {current?.episode || index} 集
-            </div>
-          </div>
-          <div className="absolute inset-x-0 bottom-0 h-[3px] bg-white/25">
-            <span className="block h-full bg-clay" style={{ width: `${pct}%` }} />
-          </div>
-        </div>
-      </div>
-    )
-  }
+  const drawerOpen = drawer && episodes.length > 0
+  // 挤压后画面列不足 420px 就降级为覆盖式，别把视频挤成一条竖缝
+  const overlay = containerWidth > 0 && containerWidth - drawerWidth < 420
 
   /* ---------------------------------------------------------------------------
-     完整播放器
+     画面（video + 弹幕 + 浮标）抽成渲染函数，供完整播放页与迷你窗共用。
+     两种形态共用同一棵 DOM、只切类名：不能 if (mini) return <另一棵 video>，
+     那样切换会重建 video 节点，正在播放的源、缓冲与位置全部丢掉。
      --------------------------------------------------------------------------- */
+  const renderStage = (compact) => (
+    <>
+      <video
+        ref={videoRef}
+        playsInline
+        className="size-full object-contain"
+        onLoadStart={apply}
+        onLoadedMetadata={applyMeta}
+        onDurationChange={apply}
+        onRateChange={(e) => { const want = boostRef.current ? 3 : getPlayerPrefs().rate; if (e.currentTarget.playbackRate !== want) apply() }}
+        onPlay={() => { setPlaying(true); setStatus("正在播放") }}
+        onPause={() => { setPlaying(false); saveProgress(false) }}
+        onWaiting={() => setStatus("缓冲中…")}
+        onPlaying={() => { apply(); setStatus("正在播放"); setError("") }}
+        onTimeUpdate={(e) => {
+          const v = e.currentTarget
+          setPosition(v.currentTime || 0)
+          if (Number.isFinite(v.duration)) setDuration(v.duration)
+          if (v.buffered.length) setBuffered(v.buffered.end(v.buffered.length - 1))
+          // 切集/换源时旧源拆除会触发一次 error 事件；新源已在正常推进就清掉误报。
+          if (!v.paused && v.readyState >= 3) setError((msg) => (msg ? "" : msg))
+        }}
+        onError={(e) => { const v = e.currentTarget; if (!v.currentSrc && !v.getAttribute("src")) return; setError("视频加载失败，可重试") }}
+        onEnded={() => { saveProgress(true); if (autoNext && index < episodes.length) playEpisode(index + 1) }}
+      />
+
+      {/* 弹幕层：迷你窗里不放，13px 字号在小窗里会糊成一团 */}
+      {danmakuOn && !compact ? (
+        <div className="pointer-events-none absolute inset-0 overflow-hidden">
+          {visibleDanmaku.map((d, i) => (
+            <span
+              key={d.id}
+              className="absolute whitespace-nowrap text-[13px] font-medium text-white [text-shadow:0_1px_4px_rgba(0,0,0,.9)] [animation:dm_9s_linear_forwards]"
+              style={{ top: `${(i % 8) * 9 + 4}%`, animationDelay: `-${Math.max(0, position - d.timeMs / 1000)}s` }}
+            >
+              {d.text}
+            </span>
+          ))}
+        </div>
+      ) : null}
+
+      {/* 中央悬浮键：压在影像上，两种主题共用白图标 + 深玻璃；小窗用迷你尺寸 */}
+      {!playing && !error ? (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); toggle() }}
+          title="播放"
+          className={cn(
+            "absolute left-1/2 top-1/2 grid -translate-x-1/2 -translate-y-1/2 place-items-center rounded-pill text-white backdrop-blur-xl",
+            "shadow-[inset_0_0_0_1px_rgba(255,255,255,.22),0_10px_28px_rgba(0,0,0,.45)]",
+            compact ? "size-9" : "size-[54px]",
+          )}
+          style={{ background: "rgba(18,18,20,.46)" }}
+        >
+          <Play className={compact ? "size-3.5" : "size-5"} fill="currentColor" strokeWidth={0} />
+        </button>
+      ) : null}
+
+      {boost ? (
+        <div className="absolute left-1/2 top-4 -translate-x-1/2 rounded-sm bg-black/60 px-2.5 py-1 text-xs text-white backdrop-blur-md">
+          3× 快进中
+        </div>
+      ) : null}
+
+      {error && compact ? (
+        <div className="absolute inset-0 grid place-items-center bg-black/60 px-2 text-center" onClick={(e) => e.stopPropagation()}>
+          <span className="text-[10.5px] leading-tight text-white/85">{error}</span>
+        </div>
+      ) : null}
+
+      {error && !compact ? (
+        <div className="absolute inset-0 grid place-items-center bg-black/50 backdrop-blur-sm" onClick={(e) => e.stopPropagation()}>
+          <div className="w-[300px] rounded-dialog bg-surface-popover p-5 text-center shadow-popover">
+            <p className="text-[12.5px] text-ink">{error}</p>
+            <div className="mt-4 flex items-center justify-center gap-2">
+              {opened ? (
+                <button
+                  type="button"
+                  className="h-[30px] rounded-sm bg-clay px-3 text-[12.5px] font-medium text-white hover:bg-clay-hover"
+                  onClick={() => playEpisode(index, position, true)}
+                >
+                  重试播放
+                </button>
+              ) : null}
+              <button type="button" className="h-[30px] rounded-sm bg-[var(--cds-fill-secondary)] px-3 text-[12.5px] text-ink hover:bg-[var(--cds-fill-secondary-hover)]" onClick={onClose}>
+                返回
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
+  )
+
   return (
     <div
       ref={rootRef}
-      className="absolute inset-x-0 bottom-0 z-[60] flex flex-col overflow-hidden bg-surface-0 text-ink"
-      // 非全屏时让出 macOS 交通灯安全区（--titlebar-inset，非 macOS 为 0）
-      style={{ top: fs ? 0 : "var(--titlebar-inset)" }}
+      className={cn(
+        mini
+          ? "absolute bottom-4 right-4 z-[60] w-[178px] animate-fade-up overflow-hidden rounded-lg bg-[#0b0b0c] shadow-[0_0_0_1px_var(--cds-border-strong),0_18px_40px_-12px_var(--film-shadow),0_4px_14px_rgba(0,0,0,.24)]"
+          : "flex min-h-0 min-w-0 flex-row overflow-hidden bg-black text-ink",
+        // 全屏是显式浮态：脱离内容区，盖住侧栏
+        !mini && (fs ? "fixed inset-0 z-50" : "relative flex-1"),
+      )}
     >
-      {/* 环境光：深浅两套（--amb-a / --amb-b） */}
+      {/* 画面列：完整播放页与迷你窗共用同一个容器，video 节点原地不动。
+          条件分支一律用 && 并保留占位，保证 children 索引稳定，React 才会复用
+          DOM —— 否则收起小窗会重建 video，播放直接断掉。 */}
       <div
-        className="pointer-events-none absolute -inset-[12%] blur-3xl"
-        style={{ background: "radial-gradient(58% 48% at 32% 26%, var(--amb-a), transparent 64%), radial-gradient(52% 46% at 74% 78%, var(--amb-b), transparent 66%)" }}
-      />
-
-      {/* ---------- 顶栏 ---------- */}
-      <header className={cn("relative z-10 flex h-14 flex-none items-center gap-3 px-5 transition-opacity duration-300", hideChrome && "opacity-0")}>
-        <button
-          type="button" title="返回列表（Esc）" onClick={onClose}
-          className="grid size-[30px] place-items-center rounded-pill bg-[var(--cds-fill-ghost-hover)] text-ink-secondary transition-colors duration-[180ms] hover:bg-[var(--cds-fill-ghost-selected)] hover:text-ink"
-        >
-          <ChevronLeft className="size-[18px]" strokeWidth={1.7} />
-        </button>
-
-        <div className="flex min-w-0 items-baseline gap-2.5">
-          <b className="truncate text-sm font-medium tracking-[-.01em] text-ink">{opened?.title || request.title || "正在播放"}</b>
-          <span className="flex-none text-xs text-ink-secondary">
-            第 {current?.episode || index} 集 · 共 {episodes.length || "?"} 集
-            {error ? "" : ` · ${source || status}`}
-          </span>
-        </div>
-
-        <span className="grow" />
-
-        {danmakuOn && visibleDanmaku.length ? (
-          <span className="flex h-[22px] items-center gap-1.5 rounded-xs bg-clay px-2 text-[11px] text-white">
-            <i className="size-1.5 rounded-full bg-white/90" />
-            弹幕 · {danmaku.length} 条
-          </span>
-        ) : null}
-
-        <div className="relative">
-          <button
-            type="button" title="更多" onClick={() => setMenu((v) => !v)}
-            className="grid size-[30px] place-items-center rounded-pill bg-[var(--cds-fill-ghost-hover)] text-ink-secondary transition-colors duration-[180ms] hover:bg-[var(--cds-fill-ghost-selected)] hover:text-ink"
-          >
-            <MoreHorizontal className="size-[18px]" strokeWidth={1.7} />
-          </button>
-          {menu ? (
-            <div className="absolute right-0 top-10 z-30 w-[220px] animate-fade-up rounded-lg bg-surface-popover p-1.5 shadow-popover">
-              <button type="button" className="flex w-full items-center justify-between rounded-sm px-2.5 py-2 text-[12.5px] text-ink hover:bg-[var(--cds-fill-ghost-hover)]" onClick={() => setDanmakuOn((v) => !v)}>
-                弹幕<span className="text-[11px] text-ink-muted">{danmakuOn ? "开" : "关"} (D)</span>
-              </button>
-              <button type="button" className="flex w-full items-center justify-between rounded-sm px-2.5 py-2 text-[12.5px] text-ink hover:bg-[var(--cds-fill-ghost-hover)]" onClick={() => setAutoNext((v) => !v)}>
-                自动连播<span className="text-[11px] text-ink-muted">{autoNext ? "开" : "关"}</span>
-              </button>
-              <button type="button" className="flex w-full items-center justify-between rounded-sm px-2.5 py-2 text-[12.5px] text-ink hover:bg-[var(--cds-fill-ghost-hover)]" onClick={() => { setMini(true); setMenu(false) }}>
-                收起为小窗<span className="text-[11px] text-ink-muted">I</span>
-              </button>
-              {document.pictureInPictureEnabled ? (
-                <button
-                  type="button"
-                  className="flex w-full items-center justify-between rounded-sm px-2.5 py-2 text-[12.5px] text-ink hover:bg-[var(--cds-fill-ghost-hover)]"
-                  onClick={() => { videoRef.current?.requestPictureInPicture().catch(() => {}); setMenu(false) }}
-                >
-                  画中画<span className="text-[11px] text-ink-muted">独立小窗</span>
-                </button>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
-      </header>
-
-      {/* ---------- 画面区：竖屏居中 ---------- */}
-      <div
-        className={cn("relative z-[5] grid min-h-0 flex-1 place-items-center overflow-hidden transition-[padding] duration-[380ms] ease-out", drawer && episodes.length && "pr-[320px]")}
-        onClick={toggle}
-        onDoubleClick={fullscreen}
+        className={cn(
+          mini
+            ? "relative overflow-hidden"
+            : "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-black",
+        )}
+        style={mini ? { aspectRatio: videoAspect } : undefined}
       >
-        <div
-          className={cn(
-            "relative max-w-full overflow-hidden rounded-lg bg-[#0b0b0c] shadow-film",
-            "transition-[height] duration-[380ms] ease-out",
-            // 高度统一占满、宽度由 aspect-ratio 自然推出：
-            // 竖屏 9:16 得到窄列，横屏 16:9 自动撑开，无需按方向分支。
-            drawer && episodes.length ? "h-[calc(100%-100px)]" : "h-[calc(100%-64px)]",
-          )}
-          style={{ aspectRatio: videoAspect }}
-        >
-          <video
-            ref={videoRef}
-            playsInline
-            className="size-full object-contain"
-            onLoadStart={apply}
-            onLoadedMetadata={applyMeta}
-            onDurationChange={apply}
-            onRateChange={(e) => { const want = boostRef.current ? 3 : getPlayerPrefs().rate; if (e.currentTarget.playbackRate !== want) apply() }}
-            onPlay={() => { setPlaying(true); setStatus("正在播放") }}
-            onPause={() => { setPlaying(false); saveProgress(false) }}
-            onWaiting={() => setStatus("缓冲中…")}
-            onPlaying={() => { apply(); setStatus("正在播放"); setError("") }}
-            onTimeUpdate={(e) => {
-              const v = e.currentTarget
-              setPosition(v.currentTime || 0)
-              if (Number.isFinite(v.duration)) setDuration(v.duration)
-              if (v.buffered.length) setBuffered(v.buffered.end(v.buffered.length - 1))
-              // 切集/换源时旧源拆除会触发一次 error 事件；新源已在正常推进就清掉误报。
-              if (!v.paused && v.readyState >= 3) setError((msg) => (msg ? "" : msg))
-            }}
-            onError={(e) => { const v = e.currentTarget; if (!v.currentSrc && !v.getAttribute("src")) return; setError("视频加载失败，可重试") }}
-            onEnded={() => { saveProgress(true); if (autoNext && index < episodes.length) playEpisode(index + 1) }}
-          />
+        {/* 顶/底栏的玻璃底色：只在控件条区域，不遮画面区 */}
+        {!mini && (
+          <>
+            <div
+              className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-14 bg-gradient-to-b from-black/70 to-transparent"
+              style={{ opacity: hideChrome ? 0 : 1, transition: "opacity .3s" }}
+            />
+            <div
+              className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-24 bg-gradient-to-t from-black/80 to-transparent"
+              style={{ opacity: hideChrome ? 0 : 1, transition: "opacity .3s" }}
+            />
+          </>
+        )}
 
-          {/* 弹幕层 */}
-          {danmakuOn ? (
-            <div className="pointer-events-none absolute inset-0 overflow-hidden">
-              {visibleDanmaku.map((d, i) => (
-                <span
-                  key={d.id}
-                  className="absolute whitespace-nowrap text-[13px] font-medium text-white [text-shadow:0_1px_4px_rgba(0,0,0,.9)] [animation:dm_9s_linear_forwards]"
-                  style={{ top: `${(i % 8) * 9 + 4}%`, animationDelay: `-${Math.max(0, position - d.timeMs / 1000)}s` }}
-                >
-                  {d.text}
-                </span>
-              ))}
-            </div>
-          ) : null}
-
-          {/* 中央悬浮键：压在影像上，两种主题共用白图标 + 深玻璃 */}
-          {!playing && !error ? (
+        {!mini && (
+          <header className={cn("drag relative z-10 flex h-14 flex-none items-center gap-3 px-5 transition-opacity duration-300", hideChrome && "pointer-events-none opacity-0")}>
             <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); toggle() }}
-              title="播放"
-              className="absolute left-1/2 top-1/2 grid size-[54px] -translate-x-1/2 -translate-y-1/2 place-items-center rounded-pill text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,.22),0_10px_28px_rgba(0,0,0,.45)] backdrop-blur-xl"
-              style={{ background: "rgba(18,18,20,.46)" }}
+              type="button" title="返回列表（Esc）" onClick={onClose}
+              className="no-drag grid size-[30px] place-items-center rounded-pill bg-white/10 text-white/80 backdrop-blur-md transition-colors duration-[180ms] hover:bg-white/20 hover:text-white"
             >
-              <Play className="size-5" fill="currentColor" strokeWidth={0} />
+              <ChevronLeft className="size-[18px]" strokeWidth={1.7} />
             </button>
-          ) : null}
 
-          {boost ? (
-            <div className="absolute left-1/2 top-4 -translate-x-1/2 rounded-sm bg-black/60 px-2.5 py-1 text-xs text-white backdrop-blur-md">
-              3× 快进中
+            <div className="no-drag flex min-w-0 items-baseline gap-2.5">
+              <b className="truncate text-sm font-medium tracking-[-.01em] text-white [text-shadow:0_1px_6px_rgba(0,0,0,.6)]">{opened?.title || request.title || "正在播放"}</b>
+              <span className="flex-none text-xs text-white/60">
+                第 {current?.episode || index} 集 · 共 {episodes.length || "?"} 集
+                {error ? "" : ` · ${source || status}`}
+              </span>
             </div>
-          ) : null}
 
-          {error ? (
-            <div className="absolute inset-0 grid place-items-center bg-black/50 backdrop-blur-sm" onClick={(e) => e.stopPropagation()}>
-              <div className="w-[300px] rounded-dialog bg-surface-popover p-5 text-center shadow-popover">
-                <p className="text-[12.5px] text-ink">{error}</p>
-                <div className="mt-4 flex items-center justify-center gap-2">
-                  {opened ? (
+            <span className="grow" />
+
+            {danmakuOn && visibleDanmaku.length ? (
+              <span className="flex h-[22px] items-center gap-1.5 rounded-xs bg-clay px-2 text-[11px] text-white">
+                <i className="size-1.5 rounded-full bg-white/90" />
+                弹幕 · {danmaku.length} 条
+              </span>
+            ) : null}
+
+            <div className="no-drag relative">
+              <button
+                type="button" title="更多" onClick={() => setMenu((v) => !v)}
+                className="grid size-[30px] place-items-center rounded-pill bg-white/10 text-white/80 backdrop-blur-md transition-colors duration-[180ms] hover:bg-white/20 hover:text-white"
+              >
+                <MoreHorizontal className="size-[18px]" strokeWidth={1.7} />
+              </button>
+              {menu ? (
+                <div className="absolute right-0 top-10 z-30 w-[220px] animate-fade-up rounded-lg bg-surface-popover p-1.5 shadow-popover">
+                  <button type="button" className="flex w-full items-center justify-between rounded-sm px-2.5 py-2 text-[12.5px] text-ink hover:bg-[var(--cds-fill-ghost-hover)]" onClick={() => setDanmakuOn((v) => !v)}>
+                    弹幕<span className="text-[11px] text-ink-muted">{danmakuOn ? "开" : "关"} (D)</span>
+                  </button>
+                  <button type="button" className="flex w-full items-center justify-between rounded-sm px-2.5 py-2 text-[12.5px] text-ink hover:bg-[var(--cds-fill-ghost-hover)]" onClick={() => setAutoNext((v) => !v)}>
+                    自动连播<span className="text-[11px] text-ink-muted">{autoNext ? "开" : "关"}</span>
+                  </button>
+                  <button type="button" className="flex w-full items-center justify-between rounded-sm px-2.5 py-2 text-[12.5px] text-ink hover:bg-[var(--cds-fill-ghost-hover)]" onClick={() => { setMini(true); setMenu(false) }}>
+                    收起为小窗<span className="text-[11px] text-ink-muted">I</span>
+                  </button>
+                  {document.pictureInPictureEnabled ? (
                     <button
                       type="button"
-                      className="h-[30px] rounded-sm bg-clay px-3 text-[12.5px] font-medium text-white hover:bg-clay-hover"
-                      onClick={() => playEpisode(index, position, true)}
+                      className="flex w-full items-center justify-between rounded-sm px-2.5 py-2 text-[12.5px] text-ink hover:bg-[var(--cds-fill-ghost-hover)]"
+                      onClick={() => { videoRef.current?.requestPictureInPicture().catch(() => {}); setMenu(false) }}
                     >
-                      重试播放
+                      画中画<span className="text-[11px] text-ink-muted">独立小窗</span>
                     </button>
                   ) : null}
-                  <button type="button" className="h-[30px] rounded-sm bg-[var(--cds-fill-secondary)] px-3 text-[12.5px] text-ink hover:bg-[var(--cds-fill-secondary-hover)]" onClick={onClose}>
-                    返回
-                  </button>
                 </div>
+              ) : null}
+            </div>
+          </header>
+        )}
+
+        {/* 画面区：完整模式铺满画面列剩余空间，迷你窗里铺满卡片 */}
+        <div
+          className={mini ? "absolute inset-0" : "relative z-[5] min-h-0 flex-1 overflow-hidden bg-black"}
+          onClick={toggle}
+          onDoubleClick={fullscreen}
+        >
+          {renderStage(mini)}
+        </div>
+
+        {!mini && (
+          <footer className={cn("relative z-30 flex-none px-5 pb-3.5 pt-2 transition-opacity duration-300", hideChrome && "pointer-events-none opacity-0")} onClick={(e) => e.stopPropagation()}>
+            {/* 进度条：整行可拖拽 / 点击跳转，悬停浮出时间气泡 */}
+            <Progress position={position} duration={duration} buffered={buffered} onSeek={seekTo} />
+
+            <div className="mt-1 flex items-center gap-1">
+              {/* 圆形播放键：video.js 的标志性元素 */}
+              <button
+                type="button"
+                onClick={toggle}
+                title={playing ? "暂停 (空格)" : "播放 (空格)"}
+                className={cn(
+                  "mr-1.5 grid size-9 flex-none place-items-center rounded-pill text-white",
+                  "shadow-[inset_0_0_0_1.5px_rgba(255,255,255,.55)]",
+                  "transition-[background-color,box-shadow,transform] duration-150 ease-out",
+                  "hover:bg-white/[.14] hover:shadow-[inset_0_0_0_1.5px_#fff] active:scale-95",
+                  "focus-visible:outline-none focus-visible:shadow-focus",
+                )}
+              >
+                {playing
+                  ? <Pause className="size-[15px]" fill="currentColor" strokeWidth={0} />
+                  : <Play className="ml-0.5 size-[15px]" fill="currentColor" strokeWidth={0} />}
+              </button>
+
+              <VolumeCtrl muted={muted} volume={volume} onToggle={toggleMuted} onChange={changeVolume} />
+
+              {/* 时间：当前 / 总长，video.js 同款排布 */}
+              <span className="tnum ml-2 flex-none text-[11.5px] text-white/45">
+                <span className="text-white/85">{formatTime(position)}</span> / {formatTime(duration)}
+              </span>
+
+              <span className="ml-2 flex-none text-[11px] text-white/35">
+                {duration ? `已缓存 ${Math.max(0, Math.round(buffered - position))} 秒` : ""}
+              </span>
+
+              <span className="grow" />
+
+              <Ctrl onVideo title="下一集 (N)" disabled={index >= episodes.length} onClick={() => playEpisode(index + 1)}>
+                <SkipForward className="size-[18px] fill-current" strokeWidth={0} />下一集
+              </Ctrl>
+
+              {/* 倍速 */}
+              <Ctrl onVideo title="播放速度" onClick={() => setPlaybackRate(RATES[(RATES.indexOf(rate) + 1) % RATES.length] || 1)}>
+                <span className="tnum">{rate}×</span>
+              </Ctrl>
+
+              {/* 画质：只有一档时隐藏 */}
+              {qualities.length > 1 ? (
+                <Ctrl onVideo>
+                  画质
+                  <select
+                    title="画质"
+                    value={quality}
+                    onChange={(e) => {
+                      e.target.blur()
+                      const q = Number(e.target.value)
+                      setPlayerPrefs({ quality: q })
+                      setQuality(q)
+                      playEpisode(index, position, playing, q)
+                    }}
+                    className="cursor-pointer appearance-none bg-transparent font-medium text-white outline-none"
+                  >
+                    {qualities.map((q) => <option key={q.value} value={q.value} className="text-ink">{q.label}</option>)}
+                  </select>
+                </Ctrl>
+              ) : null}
+
+              <Ctrl onVideo active={danmakuOn} dim={!danmakuOn} title="弹幕 (D)" onClick={() => setDanmakuOn((v) => !v)}>弹幕</Ctrl>
+
+              {episodes.length ? (
+                <Ctrl
+                  onVideo
+                  active={drawer}
+                  title="选集"
+                  onClick={() => setDrawer((v) => !v)}
+                >
+                  选集 {index}/{episodes.length}
+                </Ctrl>
+              ) : null}
+
+              {document.pictureInPictureEnabled ? (
+                <SquareCtrl onVideo title="画中画 · 独立小窗" onClick={() => videoRef.current?.requestPictureInPicture().catch(() => {})}>
+                  <PictureInPicture2 className="size-[18px]" strokeWidth={1.7} />
+                </SquareCtrl>
+              ) : null}
+
+              <SquareCtrl onVideo title="收起为小窗 (I)" onClick={() => setMini(true)}>
+                <Minimize className="size-[18px]" strokeWidth={1.7} />
+              </SquareCtrl>
+
+              <SquareCtrl onVideo title="全屏 (F) · 退出全屏 (Esc)" onClick={fullscreen}>
+                <Maximize className="size-[18px]" strokeWidth={1.7} />
+              </SquareCtrl>
+            </div>
+          </footer>
+        )}
+
+        {/* 迷你窗角标与进度：只在小窗形态出现。播放/暂停由画面区点击与中央键负责 */}
+        {mini && (
+          <>
+            <div className="absolute right-1.5 top-1.5 flex gap-1.5">
+              {document.pictureInPictureEnabled ? (
+                <button
+                  type="button" title="画中画 · 独立小窗"
+                  onClick={() => videoRef.current?.requestPictureInPicture().catch(() => {})}
+                  className="grid size-6 place-items-center rounded-xs bg-black/60 text-white backdrop-blur-md hover:bg-black/80"
+                >
+                  <PictureInPicture2 className="size-3" strokeWidth={1.8} />
+                </button>
+              ) : null}
+              <button
+                type="button" title="展开回播放页"
+                onClick={() => setMini(false)}
+                className="grid size-6 place-items-center rounded-xs bg-black/60 text-white backdrop-blur-md hover:bg-black/80"
+              >
+                <Expand className="size-3" strokeWidth={1.8} />
+              </button>
+              <button
+                type="button" title="关闭（Esc）"
+                onClick={onClose}
+                className="grid size-6 place-items-center rounded-xs bg-black/60 text-white backdrop-blur-md hover:bg-black/80"
+              >
+                <X className="size-3" strokeWidth={1.8} />
+              </button>
+            </div>
+
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent px-2.5 pb-2.5 pt-7">
+              <div className="truncate text-[11px] font-medium text-white [text-shadow:0_1px_6px_rgba(0,0,0,.7)]">
+                {opened?.title || request.title || "正在播放"} · 第 {current?.episode || index} 集
               </div>
             </div>
-          ) : null}
-        </div>
+            <div className="absolute inset-x-0 bottom-0 h-[3px] bg-white/25">
+              <span className="block h-full bg-clay" style={{ width: `${pct}%` }} />
+            </div>
+          </>
+        )}
       </div>
 
-      {/* ---------- 底栏：进度 + 控件 ---------- */}
-      <footer className={cn("relative z-10 flex-none px-5 pb-4 pt-1 transition-opacity duration-300", hideChrome && "opacity-0")} onClick={(e) => e.stopPropagation()}>
-        <div className="mb-2 flex items-center gap-3">
-          <span className="tnum text-[11.5px] text-ink-secondary">{formatTime(position)}</span>
-          {/* 进度条：点击跳转，同时表达已缓冲与已播 */}
-          <div
-            className="group relative flex h-4 flex-1 cursor-pointer items-center"
-            onClick={(e) => {
-              const rect = e.currentTarget.getBoundingClientRect()
-              seekTo((e.clientX - rect.left) / rect.width)
-            }}
-          >
-            <div className="relative h-1 w-full overflow-hidden rounded-pill bg-[var(--rail)]">
-              <span className="absolute inset-y-0 left-0 rounded-pill bg-[var(--cds-alpha-3)]" style={{ width: `${bufPct}%` }} />
-              <span className="absolute inset-y-0 left-0 rounded-pill bg-clay" style={{ width: `${pct}%` }} />
-            </div>
-            {/* 旋钮：陶土实心 + 挖空环，两种主题都成立 */}
-            <span
-              className="pointer-events-none absolute size-[13px] -translate-x-1/2 rounded-full bg-clay opacity-0 shadow-[0_0_0_3px_var(--cds-surface-0),0_2px_6px_rgba(0,0,0,.28)] transition-opacity duration-200 group-hover:opacity-100"
-              style={{ left: `${pct}%` }}
+      {/* 选集栏：仅完整播放页，与画面列同级 */}
+      {!mini && (
+        <aside
+          className={cn(
+            "flex min-h-0 flex-col bg-surface-1",
+            overlay
+              ? "absolute bottom-0 right-0 top-14 z-20 w-[320px] transition-transform duration-[380ms] ease-out"
+              : "relative flex-none overflow-hidden transition-[width] duration-[260ms] ease-out",
+          )}
+          style={overlay
+            ? { transform: drawerOpen ? "none" : "translateX(100%)", boxShadow: drawerOpen ? "var(--cds-shadow-popover)" : "none" }
+            : { width: drawerOpen ? drawerWidth : 0 }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* 拖宽把手：只在挤压模式下存在 */}
+          {!overlay ? (
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              title="拖动调整选集栏宽度"
+              onPointerDown={startResize}
+              onPointerMove={moveResize}
+              onPointerUp={endResize}
+              onPointerCancel={endResize}
+              className="absolute inset-y-0 left-0 z-10 w-1.5 cursor-col-resize transition-colors duration-150 hover:bg-clay/40"
             />
-          </div>
-          <span className="tnum text-[11.5px] text-ink-muted">{formatTime(duration)}</span>
-        </div>
-
-        <div className="flex items-center gap-1.5">
-          <Ctrl className="w-[34px] justify-center px-0 text-ink" title="播放/暂停 (空格)" onClick={toggle}>
-            {playing ? <Pause className="size-[18px]" fill="currentColor" strokeWidth={0} /> : <Play className="size-[18px]" fill="currentColor" strokeWidth={0} />}
-          </Ctrl>
-          <Ctrl title="下一集 (N)" disabled={index >= episodes.length} onClick={() => playEpisode(index + 1)}>
-            <SkipForward className="size-[18px] fill-current" strokeWidth={0} />下一集
-          </Ctrl>
-          <SquareCtrl title="静音 (M)" onClick={toggleMuted}>
-            {muted ? <VolumeX className="size-[18px]" strokeWidth={1.7} /> : <Volume2 className="size-[18px]" strokeWidth={1.7} />}
-          </SquareCtrl>
-
-          <span className="px-2 text-[11px] text-ink-muted">
-            {duration ? `已缓存 ${Math.max(0, Math.round(buffered - position))} 秒` : ""}
-          </span>
-
-          <span className="grow" />
-
-          {/* 倍速 */}
-          <Ctrl title="播放速度" onClick={() => setPlaybackRate(RATES[(RATES.indexOf(rate) + 1) % RATES.length] || 1)}>
-            <span className="tnum">{rate}×</span>
-          </Ctrl>
-
-          {/* 画质：只有一档时隐藏 */}
-          {qualities.length > 1 ? (
-            <Ctrl>
-              画质
-              <select
-                title="画质"
-                value={quality}
-                onChange={(e) => {
-                  e.target.blur()
-                  const q = Number(e.target.value)
-                  setPlayerPrefs({ quality: q })
-                  setQuality(q)
-                  playEpisode(index, position, playing, q)
-                }}
-                className="cursor-pointer appearance-none bg-transparent font-medium text-ink outline-none"
-              >
-                {qualities.map((q) => <option key={q.value} value={q.value}>{q.label}</option>)}
-              </select>
-            </Ctrl>
           ) : null}
 
-          <Ctrl active={danmakuOn} dim={!danmakuOn} title="弹幕 (D)" onClick={() => setDanmakuOn((v) => !v)}>弹幕</Ctrl>
-
-          {episodes.length ? (
-            <Ctrl
-              active={drawer}
-              title="选集"
-              onClick={() => setDrawer((v) => !v)}
-            >
-              选集 {index}/{episodes.length}
-            </Ctrl>
-          ) : null}
-
-          {document.pictureInPictureEnabled ? (
-            <SquareCtrl title="画中画 · 独立小窗" onClick={() => videoRef.current?.requestPictureInPicture().catch(() => {})}>
-              <PictureInPicture2 className="size-[18px]" strokeWidth={1.7} />
-            </SquareCtrl>
-          ) : null}
-
-          <SquareCtrl title="收起为小窗 (I)" onClick={() => setMini(true)}>
-            <Minimize className="size-[18px]" strokeWidth={1.7} />
-          </SquareCtrl>
-
-          <SquareCtrl title="全屏 (F) · 退出全屏 (Esc)" onClick={fullscreen}>
-            <Maximize className="size-[18px]" strokeWidth={1.7} />
-          </SquareCtrl>
-        </div>
-      </footer>
-
-      {/* ---------- 选集抽屉：只覆盖画面区，控件栏始终可见 ---------- */}
-      <aside
-        className="glass-heavy absolute bottom-0 right-0 top-14 z-20 flex w-[320px] flex-col p-4 shadow-[inset_1px_0_0_0_var(--hairline)] transition-transform duration-[380ms] ease-out"
-        style={{ transform: drawer && episodes.length ? "none" : "translateX(100%)" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center gap-2">
-          <b className="text-[13px] font-medium text-ink">选集</b>
-          <span className="text-[11px] text-ink-muted">共 {episodes.length} 集 · 已看 {Math.max(0, index - 1)}</span>
-          <button
-            type="button" title="收起" onClick={() => setDrawer(false)}
-            className="ml-auto grid size-[26px] place-items-center rounded-pill bg-[var(--cds-fill-ghost-hover)] text-ink-secondary hover:bg-[var(--cds-fill-ghost-selected)] hover:text-ink"
+          <div
+            className={cn("flex min-h-0 flex-1 flex-col p-4 shadow-[inset_1px_0_0_0_var(--hairline)]", overlay && "pb-20")}
+            style={{ width: overlay ? undefined : drawerWidth }}
           >
-            <X className="size-3.5" strokeWidth={1.8} />
-          </button>
-        </div>
-
-        <input
-          placeholder="输入集数跳转"
-          value={jumpText}
-          onChange={(e) => setJumpText(e.target.value.replace(/\D/g, ""))}
-          onKeyDown={(e) => {
-            e.stopPropagation()
-            if (e.key === "Enter" && jumpText) {
-              const n = Math.min(episodes.length, Math.max(1, Number(jumpText)))
-              setJumpText("")
-              setDrawerPage(null)
-              e.currentTarget.blur()
-              playEpisode(n)
-            }
-          }}
-          className="mt-3 h-7 rounded-sm bg-surface-3 px-2.5 text-[12px] text-ink shadow-[inset_0_0_0_1px_var(--cds-border)] outline-none placeholder:text-ink-muted focus-visible:shadow-focus"
-        />
-
-        {(() => {
-          const pages = Math.ceil(episodes.length / PAGE)
-          const cur = drawerPage ?? Math.floor((index - 1) / PAGE)
-          if (pages <= 1) return null
-          return (
-            <div className="mt-3 flex items-center gap-0.5 rounded-pill bg-[var(--cds-segmented-track)] p-0.5">
-              {Array.from({ length: pages }, (_, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={() => setDrawerPage(i)}
-                  className={cn(
-                    "h-6 flex-1 rounded-pill text-[11.5px] transition-all duration-[220ms] ease-snappy",
-                    i === cur ? "bg-[var(--cds-segmented-thumb)] font-medium text-ink shadow-[0_1px_2px_rgba(0,0,0,.14),0_0_0_1px_var(--cds-border)]" : "text-ink-secondary hover:text-ink",
-                  )}
-                >
-                  {i * PAGE + 1}-{Math.min(episodes.length, (i + 1) * PAGE)}
-                </button>
-              ))}
+            <div className="flex items-center gap-2">
+              <b className="text-[13px] font-medium text-ink">选集</b>
+              <span className="text-[11px] text-ink-muted">共 {episodes.length} 集 · 已看 {Math.max(0, index - 1)}</span>
+              <button
+                type="button" title="收起" onClick={() => setDrawer(false)}
+                className="ml-auto grid size-[26px] place-items-center rounded-pill bg-[var(--cds-fill-ghost-hover)] text-ink-secondary hover:bg-[var(--cds-fill-ghost-selected)] hover:text-ink"
+              >
+                <X className="size-3.5" strokeWidth={1.8} />
+              </button>
             </div>
-          )
-        })()}
 
-        <div className="scroll-thin mt-3 grid flex-1 grid-cols-5 content-start gap-1.5 overflow-y-auto">
-          {(() => {
-            const cur = drawerPage ?? Math.floor((index - 1) / PAGE)
-            return episodes.slice(cur * PAGE, cur * PAGE + PAGE).map((ep) => {
-              const seen = ep.index < index
-              const isCur = ep.index === index
+            <input
+              placeholder="输入集数跳转"
+              value={jumpText}
+              onChange={(e) => setJumpText(e.target.value.replace(/\D/g, ""))}
+              onKeyDown={(e) => {
+                e.stopPropagation()
+                if (e.key === "Enter" && jumpText) {
+                  const n = Math.min(episodes.length, Math.max(1, Number(jumpText)))
+                  setJumpText("")
+                  setDrawerPage(null)
+                  e.currentTarget.blur()
+                  playEpisode(n)
+                }
+              }}
+              className="mt-3 h-7 rounded-sm bg-surface-3 px-2.5 text-[12px] text-ink shadow-[inset_0_0_0_1px_var(--cds-border)] outline-none placeholder:text-ink-muted focus-visible:shadow-focus"
+            />
+
+            {(() => {
+              const pages = Math.ceil(episodes.length / PAGE)
+              const cur = drawerPage ?? Math.floor((index - 1) / PAGE)
+              if (pages <= 1) return null
               return (
-                <button
-                  key={ep.index}
-                  type="button"
-                  title={ep.title}
-                  onClick={() => { setDrawerPage(null); playEpisode(ep.index) }}
-                  className={cn(
-                    "relative grid h-8 place-items-center rounded-sm text-xs transition-colors duration-[160ms] ease-out",
-                    isCur
-                      ? "bg-clay font-medium text-white shadow-[0_2px_10px_-2px_rgba(217,119,87,.7)]"
-                      : seen
-                        ? "bg-[var(--cds-fill-secondary)] text-ink-muted hover:bg-[var(--cds-fill-secondary-hover)] hover:text-ink"
-                        : "bg-[var(--cds-fill-secondary)] text-ink-secondary hover:bg-[var(--cds-fill-secondary-hover)] hover:text-ink",
-                  )}
-                >
-                  <span className="tnum">{ep.episode || ep.index}</span>
-                  {seen && !isCur ? <i className="absolute bottom-[5px] h-0.5 w-3.5 rounded-pill bg-[var(--cds-alpha-3)]" /> : null}
-                  {ep.taskId ? <i className="absolute right-1 top-1 size-1 rounded-full bg-clay" title="本地已下载" /> : null}
-                </button>
+                <div className="mt-3 flex items-center gap-0.5 rounded-pill bg-[var(--cds-segmented-track)] p-0.5">
+                  {Array.from({ length: pages }, (_, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => setDrawerPage(i)}
+                      className={cn(
+                        "h-6 flex-1 rounded-pill text-[11.5px] transition-all duration-[220ms] ease-snappy",
+                        i === cur ? "bg-[var(--cds-segmented-thumb)] font-medium text-ink shadow-[0_1px_2px_rgba(0,0,0,.14),0_0_0_1px_var(--cds-border)]" : "text-ink-secondary hover:text-ink",
+                      )}
+                    >
+                      {i * PAGE + 1}-{Math.min(episodes.length, (i + 1) * PAGE)}
+                    </button>
+                  ))}
+                </div>
               )
-            })
-          })()}
-        </div>
+            })()}
 
-        <div className="mt-auto flex flex-col gap-1 border-t border-hairline pt-3.5">
-          <div className="flex items-center gap-2.5 text-xs text-ink-secondary">
-            <span className={`relative h-[22px] w-[38px] flex-none rounded-pill transition-colors duration-200 ${autoNext ? "bg-clay" : "bg-[var(--cds-alpha-3)]"}`}>
-              <i className={`absolute left-0.5 top-0.5 size-[18px] rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,.35)] transition-transform duration-300 ease-snappy ${autoNext ? "translate-x-4" : ""}`} />
-            </span>
-            <button type="button" onClick={() => setAutoNext((v) => !v)} className="text-left">自动连播</button>
-            <span className="ml-auto text-[11px] text-ink-muted">剩余 3 秒时提示</span>
+            <div className="scroll-thin mt-3 grid flex-1 grid-cols-5 content-start gap-1.5 overflow-y-auto">
+              {(() => {
+                const cur = drawerPage ?? Math.floor((index - 1) / PAGE)
+                return episodes.slice(cur * PAGE, cur * PAGE + PAGE).map((ep) => {
+                  const seen = ep.index < index
+                  const isCur = ep.index === index
+                  return (
+                    <button
+                      key={ep.index}
+                      type="button"
+                      title={ep.title}
+                      onClick={() => { setDrawerPage(null); playEpisode(ep.index) }}
+                      className={cn(
+                        "relative grid h-8 place-items-center rounded-sm text-xs transition-colors duration-[160ms] ease-out",
+                        isCur
+                          ? "bg-clay font-medium text-white shadow-[0_2px_10px_-2px_rgba(217,119,87,.7)]"
+                          : seen
+                            ? "bg-[var(--cds-fill-secondary)] text-ink-muted hover:bg-[var(--cds-fill-secondary-hover)] hover:text-ink"
+                            : "bg-[var(--cds-fill-secondary)] text-ink-secondary hover:bg-[var(--cds-fill-secondary-hover)] hover:text-ink",
+                      )}
+                    >
+                      <span className="tnum">{ep.episode || ep.index}</span>
+                      {seen && !isCur ? <i className="absolute bottom-[5px] h-0.5 w-3.5 rounded-pill bg-[var(--cds-alpha-3)]" /> : null}
+                      {ep.taskId ? <i className="absolute right-1 top-1 size-1 rounded-full bg-clay" title="本地已下载" /> : null}
+                    </button>
+                  )
+                })
+              })()}
+            </div>
+
+            <div className="mt-auto flex flex-col gap-1 border-t border-hairline pt-3.5">
+              <div className="flex items-center gap-2.5 text-xs text-ink-secondary">
+                <span className={`relative h-[22px] w-[38px] flex-none rounded-pill transition-colors duration-200 ${autoNext ? "bg-clay" : "bg-[var(--cds-alpha-3)]"}`}>
+                  <i className={`absolute left-0.5 top-0.5 size-[18px] rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,.35)] transition-transform duration-300 ease-snappy ${autoNext ? "translate-x-4" : ""}`} />
+                </span>
+                <button type="button" onClick={() => setAutoNext((v) => !v)} className="text-left">自动连播</button>
+                <span className="ml-auto text-[11px] text-ink-muted">剩余 3 秒时提示</span>
+              </div>
+              <p className="text-[11px] leading-relaxed text-ink-muted">
+                空格 播放/暂停 · ←/→ 5 秒 · 长按 → 3× · N/P 切集 · M 静音 · D 弹幕 · I 小窗 · F 全屏 · Esc 逐层返回
+              </p>
+            </div>
           </div>
-          <p className="text-[11px] leading-relaxed text-ink-muted">
-            空格 播放/暂停 · ←/→ 5 秒 · 长按 → 3× · N/P 切集 · M 静音 · D 弹幕 · I 小窗 · F 全屏 · Esc 逐层返回
-          </p>
-        </div>
-      </aside>
+        </aside>
+      )}
     </div>
   )
 }

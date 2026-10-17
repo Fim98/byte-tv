@@ -71,7 +71,7 @@ export default function Detail({ id, route }) {
   if (state.loading && !data) {
     return (
       <div className="flex flex-col gap-4">
-        <SkeletonPoster className="h-[248px] rounded-lg" />
+        <SkeletonPoster className="h-[276px] rounded-lg" />
         <div className="grid grid-cols-10 gap-2.5">
           {Array.from({ length: 30 }, (_, i) => <SkeletonPoster key={i} className="h-10 rounded-sm" />)}
         </div>
@@ -103,15 +103,15 @@ export default function Detail({ id, route }) {
 
   return (
     <div className="flex flex-col gap-5">
-      {/* ---------- 资料头图 ---------- */}
-      <section className="relative h-[248px] overflow-hidden rounded-lg bg-[#171614]">
+      {/* ---------- 资料头图：左侧竖版 9:16 封面 ---------- */}
+      <section className="relative h-[276px] overflow-hidden rounded-lg bg-[#171614]">
         {cover ? <img src={cover} alt="" className="absolute inset-0 size-full scale-110 object-cover blur-xl" /> : null}
         {/* 遮罩：左侧贴近画布底色，右侧渐隐让头图透出 */}
         <div className="absolute inset-0 bg-gradient-to-r from-surface-0 via-surface-0/95 to-transparent" />
         <div className="absolute inset-0 bg-gradient-to-r from-transparent from-40% via-surface-0/70 via-62% to-surface-0/25" />
 
         <div className="relative flex h-full items-start gap-5 px-6 py-6">
-          <div className="relative h-[184px] w-[132px] flex-none overflow-hidden rounded-card bg-[#171614] shadow-[0_12px_30px_-8px_rgba(0,0,0,.55),0_0_0_1px_var(--cds-border-strong)]">
+          <div className="relative aspect-[9/16] h-[220px] flex-none overflow-hidden rounded-card bg-[#171614] shadow-[0_12px_30px_-8px_rgba(0,0,0,.55),0_0_0_1px_var(--cds-border-strong)]">
             {cover ? <img src={cover} alt="" className="size-full object-cover" /> : (
               <span className="grid size-full place-items-center text-2xl font-medium text-white/25">{title.slice(0, 1)}</span>
             )}
@@ -156,11 +156,11 @@ export default function Detail({ id, route }) {
               ) : null}
               <IconButton
                 size={40} round={false}
-                title={saved ? "已追剧（点击取消）" : "追剧"}
+                title={saved ? "已在追剧清单中（点击取消）" : "加入追剧清单"}
                 onClick={toggleFollow}
                 className={saved ? "bg-clay text-white hover:bg-clay-hover hover:text-white" : "shadow-[inset_0_0_0_1px_var(--cds-border-strong)]"}
               >
-                {saved ? <Check className="size-[17px]" /> : <Heart className="size-[17px]" />}
+                <Heart className={cn("size-[17px]", saved && "fill-white text-white")} />
               </IconButton>
               <IconButton
                 size={40} round={false} title="下载全剧"
@@ -271,8 +271,14 @@ function Similar() {
   return (
     <Row title="同类推荐" en="Similar" extra="来自红果分类推荐">
       {state.loading
-        ? Array.from({ length: 5 }, (_, i) => <SkeletonPoster key={i} className="h-[132px]" />)
-        : (state.data?.data || []).slice(0, 12).map((d) => <Poster key={d.id} drama={d} size="sm" />)}
+        ? Array.from({ length: 6 }, (_, i) => <SkeletonPoster key={i} className="aspect-[9/16]" />)
+        : (state.data?.data || []).slice(0, 12).map((d) => (
+            <Poster
+              key={d.id} drama={d} size="sm"
+              onFollow={() => follow(d.id)}
+              onDownload={() => download(d.id)}
+            />
+          ))}
     </Row>
   )
 }

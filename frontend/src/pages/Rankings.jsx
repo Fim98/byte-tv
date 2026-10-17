@@ -25,7 +25,7 @@ export default function Rankings({ route }) {
 
       <PosterGrid>
         {state.loading
-          ? Array.from({ length: 12 }, (_, i) => <SkeletonPoster key={i} className="h-[212px]" />)
+          ? Array.from({ length: 12 }, (_, i) => <SkeletonPoster key={i} className="aspect-[9/16]" />)
           : items.map((item) => (
               <Poster
                 key={item.drama.id}

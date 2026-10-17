@@ -2,7 +2,7 @@
 # macOS：universal（arm64 + x86_64）Byte TV.app 与 .dmg。必须在 macOS 上运行（需要 Xcode Command Line Tools）。
 #
 # 可选环境变量：
-#   VERSION                       版本号（默认 0.1.0）
+#   VERSION                       版本号（默认 0.1.1）
 #   MAC_SIGN_IDENTITY             "Developer ID Application: Name (TEAMID)"；为空则 ad-hoc 签名
 #   NOTARY_PROFILE                xcrun notarytool store-credentials 保存的 profile 名；或
 #   APPLE_ID / APPLE_TEAM_ID / APPLE_APP_PASSWORD   直接提供公证凭据
@@ -27,7 +27,7 @@ sed "s/__VERSION__/$VERSION/g" packaging/darwin/Info.plist.tmpl > "$APP/Contents
 
 # 图标：程序生成 1024px PNG → iconset → icns
 ICONSET="$OUT/icon.iconset"; rm -rf "$ICONSET"; mkdir -p "$ICONSET"
-"$OUT/bytetv-darwin-$(uname -m | sed 's/x86_64/amd64/')" -gen-icon 1024 "$OUT/icon-1024.png"
+"$OUT/bytetv-darwin-$(uname -m | sed 's/x86_64/amd64/')" -gen-icon-mac 1024 "$OUT/icon-1024.png"
 for s in 16 32 128 256 512; do
   sips -z $s $s "$OUT/icon-1024.png" --out "$ICONSET/icon_${s}x${s}.png" >/dev/null
   sips -z $((s*2)) $((s*2)) "$OUT/icon-1024.png" --out "$ICONSET/icon_${s}x${s}@2x.png" >/dev/null
