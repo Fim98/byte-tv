@@ -38,14 +38,18 @@
   .tnum { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
 }
 
-/* 窗口拖拽区（原生窗口能力，无法用工具类表达） */
-.drag { -webkit-app-region: drag; app-region: drag; }
-.no-drag, .drag button, .drag input, .drag a { -webkit-app-region: no-drag; app-region: no-drag; }
+/* 窗口拖拽区。
+   注意：-webkit-app-region 是 Electron 专属，Wails v3 不解析；Wails 自带的
+   --wails-draggable 需要它的 JS 运行时，而本项目页面走本机 HTTP、不经过 Wails
+   AssetServer，运行时未注入，因此两者都不可用。实际拖拽由 .drag 上的 JS 监听
+   触发原生 startDrag（见 lib/desktop.js）。这里只保留光标与禁选，避免误导。 */
+.drag { cursor: default; }
+.no-drag { cursor: auto; }
 
 /* macOS 沉浸式标题栏（MacTitleBarHiddenInset）：系统交通灯由窗口原生绘制、浮在内容左上角。
    侧栏顶端让出等高留白，既不重绘红绿灯，也不让导航被压住。其他平台有原生标题栏，不留白。 */
 .titlebar-space { display: none; }
-html[data-os="darwin"] .titlebar-space { display: block; height: 52px; -webkit-app-region: drag; app-region: drag; }
+html[data-os="darwin"] .titlebar-space { display: block; height: 52px; }
 
 @layer components {
   /* 玻璃质感：backdrop-filter 需带浏览器前缀，写成组件类更稳 */

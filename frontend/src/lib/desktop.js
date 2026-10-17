@@ -42,6 +42,9 @@ function createBridge(info) {
     showItemInFolder: (path) => call("showItemInFolder", { path }),
     openExternal: (url) => call("openExternal", { url }),
     toggleFullScreen: () => call("toggleFullScreen"),
+    // 拖动窗口：页面不经 Wails AssetServer，拿不到 Wails 运行时，
+    // --wails-draggable / -webkit-app-region 都不生效；改由原生外壳转发。
+    startDrag: () => call("startDrag"),
     getVersion: () => call("getVersion"),
     getSettings: () => call("getSettings"),
     setSettings: (patch) => call("setSettings", patch),

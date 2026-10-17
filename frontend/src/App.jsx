@@ -20,6 +20,31 @@ import Player from "./pages/Player"
 
 applyTheme()
 
+/* ---------------------------------------------------------------------------
+   窗口拖拽：页面走本机 HTTP，拿不到 Wails 运行时，所以 --wails-draggable 与
+   -webkit-app-region 都不生效。改为在标记了 .drag 的区域按下时调用原生 startDrag，
+   由 Wails 转发到各平台实现。macOS 的 performWindowDragWithEvent 依赖「按下」这一
+   时刻的鼠标事件，因此必须在 mousedown 里触发，不能等 mousemove。
+   交互元素（按钮/输入框等）标了 .no-drag，命中它们时不拖拽，避免抢走点击。
+   --------------------------------------------------------------------------- */
+function useWindowDrag() {
+  useEffect(() => {
+    if (!window.juku?.startDrag) return
+    const onDown = (e) => {
+      if (e.button !== 0) return
+      const el = e.target instanceof Element ? e.target : null
+      if (!el) return
+      if (el.closest(".no-drag, button, input, textarea, select, a")) return
+      if (!el.closest(".drag")) return
+      // 双击不拖拽，交给系统做缩放/最大化
+      if (e.detail > 1) return
+      window.juku.startDrag().catch(() => {})
+    }
+    window.addEventListener("mousedown", onDown, true)
+    return () => window.removeEventListener("mousedown", onDown, true)
+  }, [])
+}
+
 // 侧栏主导航 = 功能页；「设置」固定停靠在最底部（见 SideFoot）。
 const NAV = [
   { path: "/home", label: "发现", icon: Compass },
@@ -208,6 +233,7 @@ function SideFoot({ route }) {
    --------------------------------------------------------------------------- */
 export default function App() {
   const route = useRoute()
+  useWindowDrag()
   const [ready, setReady] = useState(false)
   const [fatal, setFatal] = useState(null)
   const [status, setStatus] = useState(null)
@@ -282,8 +308,8 @@ export default function App() {
       {/* ---------- 侧栏：通高，无独立拖拽条 ---------- */}
       <aside className="flex w-[var(--side-w)] flex-none flex-col bg-surface-1 shadow-[inset_-1px_0_0_0_var(--hairline)]">
         {/* macOS 下由 .titlebar-space 让出交通灯留白（见 index.css）；
-            红绿灯是窗口原生绘制的，界面不得重绘。 */}
-        <div className="titlebar-space flex-none" />
+            红绿灯是窗口原生绘制的，界面不得重绘。该区域同时可拖动窗口。 */}
+        <div className="titlebar-space drag flex-none" />
 
         <nav className="flex flex-col gap-px px-2.5">
           {NAV.map(({ path, label, icon: Icon, badge }) => {
