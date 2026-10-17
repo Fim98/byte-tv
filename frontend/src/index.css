@@ -51,6 +51,11 @@
 .titlebar-space { display: none; }
 html[data-os="darwin"] .titlebar-space { display: block; height: 52px; }
 
+/* 交通灯安全区高度：浮层（如播放器）需要据此下移，避免盖住原生交通灯。
+   非 macOS 为 0，浮层照常贴顶。 */
+:root { --titlebar-inset: 0px; }
+html[data-os="darwin"] { --titlebar-inset: 52px; }
+
 @layer components {
   /* 玻璃质感：backdrop-filter 需带浏览器前缀，写成组件类更稳 */
   .glass {

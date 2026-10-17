@@ -93,6 +93,8 @@ export default function Player({ request, onClose }) {
   const [qualities, setQualities] = useState([])
   const [quality, setQuality] = useState(0) // 本集实际画质；用户偏好在 playerPrefs.quality
   const [mini, setMini] = useState(false)   // 收起为右下角迷你窗
+  // 原生全屏状态：全屏时交通灯隐藏，浮层可贴顶；非全屏需让出 macOS 交通灯位
+  const [fs, setFs] = useState(() => Boolean(document.fullscreenElement))
   const [menu, setMenu] = useState(false)
   const episodes = opened?.episodes || []
 
@@ -300,6 +302,8 @@ export default function Player({ request, onClose }) {
     if (native?.toggleFullScreen) native.toggleFullScreen()
     else if (document.fullscreenElement) document.exitFullscreen()
     else rootRef.current?.requestFullscreen?.()
+    // 原生全屏由外壳切换，状态稍后同步；这里先乐观翻转，随后由 fullscreenchange 校正
+    setFs((v) => !v)
   }
   const seekTo = (ratio) => {
     const v = videoRef.current
@@ -310,11 +314,31 @@ export default function Player({ request, onClose }) {
   }
 
   /* ---------------------------------------------------------------------------
+     全屏状态同步：DOM 全屏走 fullscreenchange；原生窗口全屏不派发该事件，
+     用窗口尺寸变化兜底（全屏时视口会变成整屏尺寸）。
+     --------------------------------------------------------------------------- */
+  useEffect(() => {
+    const sync = () => setFs(Boolean(document.fullscreenElement))
+    document.addEventListener("fullscreenchange", sync)
+    const syncNative = () => {
+      const full = screen.width === window.innerWidth && screen.height === window.innerHeight
+      setFs((prev) => (document.fullscreenElement ? true : full || prev))
+    }
+    window.addEventListener("resize", syncNative)
+    syncNative()
+    return () => {
+      document.removeEventListener("fullscreenchange", sync)
+      window.removeEventListener("resize", syncNative)
+    }
+  }, [])
+
+  /* ---------------------------------------------------------------------------
      Esc 逐层返回：全屏 → 抽屉 → 迷你窗 → 关闭。
      最外层不销毁播放会话；进度早已自动保存，可续播。
      --------------------------------------------------------------------------- */
   const escapeLayer = useCallback(() => {
-    if (document.fullscreenElement) { document.exitFullscreen(); return }
+    if (document.fullscreenElement) { document.exitFullscreen(); setFs(false); return }
+    if (fs) { native?.toggleFullScreen?.(); setFs(false); return }
     if (menu) { setMenu(false); return }
     if (drawer && episodes.length) { setDrawer(false); return }
     if (!mini) { setMini(true); return }
@@ -456,7 +480,12 @@ export default function Player({ request, onClose }) {
      完整播放器
      --------------------------------------------------------------------------- */
   return (
-    <div ref={rootRef} className="absolute inset-0 z-[60] flex flex-col overflow-hidden bg-surface-0 text-ink">
+    <div
+      ref={rootRef}
+      className="absolute inset-x-0 bottom-0 z-[60] flex flex-col overflow-hidden bg-surface-0 text-ink"
+      // 非全屏时让出 macOS 交通灯安全区（--titlebar-inset，非 macOS 为 0）
+      style={{ top: fs ? 0 : "var(--titlebar-inset)" }}
+    >
       {/* 环境光：深浅两套（--amb-a / --amb-b） */}
       <div
         className="pointer-events-none absolute -inset-[12%] blur-3xl"
