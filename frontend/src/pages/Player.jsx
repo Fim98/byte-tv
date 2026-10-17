@@ -81,7 +81,18 @@ export default function Player({ request, onClose }) {
   const [volume, setVolume] = useState(() => getPlayerPrefs().volume)
   const boostRef = useRef(false)
   const holdTimerRef = useRef(null) // 长按 → 计时器放 ref，避免播放中频繁重渲染时被清掉
+  // 画面宽高比：由视频元数据决定（竖屏短剧多为 9:16，横屏为 16:9）。
+  // 写死比例会让横屏视频被挤成竖条，看起来像页内小组件而不是播放器。
+  const [videoAspect, setVideoAspect] = useState(9 / 16)
   const apply = () => applyPlayerPrefs(videoRef.current, { boost: boostRef.current })
+  // 元数据就绪时除了应用偏好，还记录画面真实宽高比，供容器自适应
+  const applyMeta = () => {
+    apply()
+    const v = videoRef.current
+    if (v && v.videoWidth > 0 && v.videoHeight > 0) {
+      setVideoAspect(v.videoWidth / v.videoHeight)
+    }
+  }
   const [drawer, setDrawer] = useState(true)
   const [drawerPage, setDrawerPage] = useState(null) // null = 跟随当前集所在分页
   const [jumpText, setJumpText] = useState("")
@@ -403,13 +414,13 @@ export default function Player({ request, onClose }) {
         ref={rootRef}
         className="absolute bottom-4 right-4 z-[60] w-[178px] animate-fade-up overflow-hidden rounded-lg bg-[#0b0b0c] shadow-[0_0_0_1px_var(--cds-border-strong),0_18px_40px_-12px_var(--film-shadow),0_4px_14px_rgba(0,0,0,.24)]"
       >
-        <div className="group relative aspect-[9/16] overflow-hidden">
+        <div className="group relative overflow-hidden" style={{ aspectRatio: videoAspect }}>
           <video
             ref={videoRef}
             playsInline
             className="size-full object-contain"
             onLoadStart={apply}
-            onLoadedMetadata={apply}
+            onLoadedMetadata={applyMeta}
             onDurationChange={apply}
             onRateChange={(e) => { const want = boostRef.current ? 3 : getPlayerPrefs().rate; if (e.currentTarget.playbackRate !== want) apply() }}
             onPlay={() => { setPlaying(true); setStatus("正在播放") }}
@@ -558,17 +569,20 @@ export default function Player({ request, onClose }) {
       >
         <div
           className={cn(
-            "relative aspect-[9/16] overflow-hidden rounded-lg bg-[#0b0b0c] shadow-film",
+            "relative max-w-full overflow-hidden rounded-lg bg-[#0b0b0c] shadow-film",
             "transition-[height] duration-[380ms] ease-out",
+            // 高度统一占满、宽度由 aspect-ratio 自然推出：
+            // 竖屏 9:16 得到窄列，横屏 16:9 自动撑开，无需按方向分支。
             drawer && episodes.length ? "h-[calc(100%-100px)]" : "h-[calc(100%-64px)]",
           )}
+          style={{ aspectRatio: videoAspect }}
         >
           <video
             ref={videoRef}
             playsInline
             className="size-full object-contain"
             onLoadStart={apply}
-            onLoadedMetadata={apply}
+            onLoadedMetadata={applyMeta}
             onDurationChange={apply}
             onRateChange={(e) => { const want = boostRef.current ? 3 : getPlayerPrefs().rate; if (e.currentTarget.playbackRate !== want) apply() }}
             onPlay={() => { setPlaying(true); setStatus("正在播放") }}
