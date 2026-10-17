@@ -279,14 +279,11 @@ export default function App() {
 
   return (
     <div className="relative flex h-full bg-surface-0">
-      {/* ---------- 侧栏：通高，交通灯内嵌顶端，无独立拖拽条 ---------- */}
+      {/* ---------- 侧栏：通高，无独立拖拽条 ---------- */}
       <aside className="flex w-[var(--side-w)] flex-none flex-col bg-surface-1 shadow-[inset_-1px_0_0_0_var(--hairline)]">
-        {/* 交通灯行高 52px：无品牌位时用它撑住顶部节奏 */}
-        <div className="drag flex h-[52px] flex-none items-center gap-2 px-[18px]">
-          <i className="size-[11px] rounded-full bg-[#ff5f57]" />
-          <i className="size-[11px] rounded-full bg-[#febc2e]" />
-          <i className="size-[11px] rounded-full bg-[#28c840]" />
-        </div>
+        {/* macOS 下由 .titlebar-space 让出交通灯留白（见 index.css）；
+            红绿灯是窗口原生绘制的，界面不得重绘。 */}
+        <div className="titlebar-space flex-none" />
 
         <nav className="flex flex-col gap-px px-2.5">
           {NAV.map(({ path, label, icon: Icon, badge }) => {

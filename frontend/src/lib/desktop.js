@@ -148,6 +148,9 @@ export async function bootstrapDesktop() {
     return
   }
   mediaToken = info.mediaToken || ""
+  // 平台标识落到 <html data-os>，供 CSS 判断（macOS 的沉浸式标题栏需要让出交通灯留白）。
+  // 这一步在 shell 判断之前，桌面后端下始终可用。
+  if (info.platform) document.documentElement.dataset.os = info.platform
   await syncPrefs()
   if (!info.shell) return
   desktopShell = true
