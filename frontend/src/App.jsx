@@ -22,26 +22,49 @@ applyTheme()
 
 /* ---------------------------------------------------------------------------
    窗口拖拽：页面走本机 HTTP，拿不到 Wails 运行时，所以 --wails-draggable 与
-   -webkit-app-region 都不生效。改为在标记了 .drag 的区域按下时调用原生 startDrag，
-   由 Wails 转发到各平台实现。macOS 的 performWindowDragWithEvent 依赖「按下」这一
-   时刻的鼠标事件，因此必须在 mousedown 里触发，不能等 mousemove。
+   -webkit-app-region 都不生效，改由原生桥接触发 Wails 的平台实现。
+
+   时机必须跟 Wails 运行时一致：在「按下后第一次移动」时启动，而不是一按下就启动。
+   macOS 的 performWindowDragWithEvent 需要有实际位移才建立窗口拖拽会话；
+   在 mousedown 当场调用会起一个零位移的拖拽，AppKit 立刻判定结束 ——
+   表现为窗口闪一下就不动了。
    交互元素（按钮/输入框等）标了 .no-drag，命中它们时不拖拽，避免抢走点击。
    --------------------------------------------------------------------------- */
 function useWindowDrag() {
   useEffect(() => {
     if (!window.juku?.startDrag) return
+    let armed = false
+
+    const draggable = (target) => {
+      const el = target instanceof Element ? target : null
+      if (!el) return false
+      if (el.closest(".no-drag, button, input, textarea, select, a")) return false
+      return Boolean(el.closest(".drag"))
+    }
+
     const onDown = (e) => {
-      if (e.button !== 0) return
-      const el = e.target instanceof Element ? e.target : null
-      if (!el) return
-      if (el.closest(".no-drag, button, input, textarea, select, a")) return
-      if (!el.closest(".drag")) return
-      // 双击不拖拽，交给系统做缩放/最大化
-      if (e.detail > 1) return
+      // 双击不拖拽，留给系统做缩放/最大化
+      armed = e.button === 0 && e.detail <= 1 && draggable(e.target)
+    }
+
+    const onMove = (e) => {
+      if (!armed) return
+      // 只启动一次；按住不放且有位移，窗口拖拽才能建立
+      armed = false
+      if (e.buttons === 0) return
       window.juku.startDrag().catch(() => {})
     }
+
+    const onUp = () => { armed = false }
+
     window.addEventListener("mousedown", onDown, true)
-    return () => window.removeEventListener("mousedown", onDown, true)
+    window.addEventListener("mousemove", onMove, true)
+    window.addEventListener("mouseup", onUp, true)
+    return () => {
+      window.removeEventListener("mousedown", onDown, true)
+      window.removeEventListener("mousemove", onMove, true)
+      window.removeEventListener("mouseup", onUp, true)
+    }
   }, [])
 }
 

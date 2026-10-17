@@ -34,6 +34,27 @@ function platformName(goos) {
   return goos === "windows" ? "win32" : goos
 }
 
+// 直连本机 IPC —— 与 Wails 运行时（@wailsio/runtime system.ts）同一条通道：
+//   macOS   : window.webkit.messageHandlers.external.postMessage
+//   Windows : window.chrome.webview.postMessage
+// 消息以 "wails:" 开头时会直接被 Wails 路由到 WebviewWindow.HandleMessage，
+// 不经过 HTTP，也没有后端往返。对拖拽这类对时序敏感的操作用它才可靠。
+// 返回是否成功送出。
+export function wailsMessage(message) {
+  if (typeof window === "undefined") return false
+  const external = window.webkit?.messageHandlers?.external
+  if (external?.postMessage) {
+    external.postMessage(message)
+    return true
+  }
+  const webview = window.chrome?.webview
+  if (webview?.postMessage) {
+    webview.postMessage(message)
+    return true
+  }
+  return false
+}
+
 function createBridge(info) {
   return {
     shell: "wails",
@@ -42,9 +63,13 @@ function createBridge(info) {
     showItemInFolder: (path) => call("showItemInFolder", { path }),
     openExternal: (url) => call("openExternal", { url }),
     toggleFullScreen: () => call("toggleFullScreen"),
-    // 拖动窗口：页面不经 Wails AssetServer，拿不到 Wails 运行时，
-    // --wails-draggable / -webkit-app-region 都不生效；改由原生外壳转发。
-    startDrag: () => call("startDrag"),
+    // 拖动窗口：优先走本机 IPC（与 Wails 运行时同通道，无网络往返）。
+    // 页面走本机 HTTP 时拿不到 Wails 运行时，--wails-draggable / -webkit-app-region
+    // 都不生效，所以由 JS 主动发 "wails:drag"；IPC 不可用时退回 HTTP 端点。
+    startDrag: () => {
+      if (wailsMessage("wails:drag")) return Promise.resolve(true)
+      return call("startDrag")
+    },
     getVersion: () => call("getVersion"),
     getSettings: () => call("getSettings"),
     setSettings: (patch) => call("setSettings", patch),

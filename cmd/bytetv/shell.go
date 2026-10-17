@@ -97,10 +97,9 @@ func (s *shell) Native(action string, body json.RawMessage) (any, error) {
 		}
 		return false, nil
 	case "startDrag":
-		// 拖动窗口。页面走本机 HTTP、不经过 Wails AssetServer，拿不到 Wails 运行时，
-		// 因此 --wails-draggable / -webkit-app-region 都不会生效；改由前端在按下时
-		// 调用这里，转发给 Wails 的平台实现（macOS performWindowDragWithEvent /
-		// Windows WM_NCLBUTTONDOWN+HTCAPTION）。需在按住时调用，macOS 依赖当前鼠标事件。
+		// 拖动窗口的 HTTP 兜底路径。前端优先走本机 IPC（"wails:drag" 直连
+		// WebviewWindow.HandleMessage），因为它没有网络往返，能保住「鼠标按下」
+		// 的时序；本机 IPC 不可用时才退到这里。
 		if s.win == nil {
 			return false, nil
 		}
