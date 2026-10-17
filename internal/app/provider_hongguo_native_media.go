@@ -20,6 +20,9 @@ func (downloader *Downloader) resolveHongguoAppMedia(ctx context.Context, videoI
 		"video_id": videoID, "content_type": 1,
 		"biz_param": map[string]any{"need_all_video_definition": true, "video_platform": 3},
 	}
+	// 该端点对签名要求高于目录/详情：只带轻量签名会得到 HTTP 200 + 空响应体，
+	// 必须用完整 passport 签名（X-Medusa / X-Helios / 新版 X-Gorgon）。
+	ctx = context.WithValue(ctx, hongguoPassportKey{}, downloader.passportAppDeviceID())
 	result, err := downloader.hongguoAppRequest(ctx, http.MethodPost, "/novel/player/video_model/v1/", nil, payload)
 	if err != nil {
 		return providerMedia{}, err

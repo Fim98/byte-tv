@@ -208,9 +208,20 @@ func (downloader *Downloader) hongguoAppRequest(ctx context.Context, method, pat
 			prepared.URL.RawQuery = query.Encode()
 			if comment {
 				signHongguoCommentRequest(prepared, commentNonce, now)
-			} else {
-				signHongguoRequest(prepared, body, now)
+				return
 			}
+			// 取流等对签名要求高的端点用完整 passport 签名；其余用轻量签名。
+			// passport 会微调 _rticket 来选分支，因此必须采用它回传的 RawQuery。
+			if deviceID, _ := ctx.Value(hongguoPassportKey{}).(string); deviceID != "" {
+				if raw, headers, signErr := signPassportRequest(query, body, now.UnixMilli(), deviceID); signErr == nil {
+					prepared.URL.RawQuery = raw
+					for key, values := range headers {
+						prepared.Header[key] = values
+					}
+					return
+				}
+			}
+			signHongguoRequest(prepared, body, now)
 		})
 		if err != nil {
 			lastErr = err
