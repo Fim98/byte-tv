@@ -2,7 +2,7 @@
 # macOS：universal（arm64 + x86_64）Byte TV.app 与 .dmg。必须在 macOS 上运行（需要 Xcode Command Line Tools）。
 #
 # 可选环境变量：
-#   VERSION                       版本号（默认 0.1.1）
+#   VERSION                       版本号（默认 0.1.2）
 #   MAC_SIGN_IDENTITY             "Developer ID Application: Name (TEAMID)"；为空则 ad-hoc 签名
 #   NOTARY_PROFILE                xcrun notarytool store-credentials 保存的 profile 名；或
 #   APPLE_ID / APPLE_TEAM_ID / APPLE_APP_PASSWORD   直接提供公证凭据

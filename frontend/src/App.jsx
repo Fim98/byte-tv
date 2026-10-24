@@ -3,10 +3,31 @@ import {
   BarChart3, Bell, ChevronLeft, ChevronRight, Clock, Compass, Download,
   Heart, LayoutGrid, Moon, RefreshCw, Search, SlidersHorizontal, Sun,
 } from "lucide-react"
+
+/* 原生 macOS 规范的侧栏切换图标（极简窗格 + 侧边栏激活态指示） */
+export function SidebarToggleIcon({ collapsed, className }) {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className || "size-4"}
+    >
+      <rect x="2.5" y="3.5" width="15" height="13" rx="2.5" />
+      <path d="M7.5 3.5v13" />
+      {!collapsed && (
+        <rect x="3.5" y="4.5" width="3" height="11" rx="1" fill="currentColor" opacity="0.28" stroke="none" />
+      )}
+    </svg>
+  )
+}
 import { apiGet, initViewer } from "./api"
-import { navigate, useRoute } from "./router"
+import { navigate, useNavigation, useRoute } from "./router"
 import { Button, IconButton, StatusDot, setToastHandler, toast } from "./components/cds"
-import { setPlayerOpener } from "./actions"
+import { loadFollowing, setPlayerOpener } from "./actions"
 import { applyTheme, getTheme, setTheme } from "./lib/theme"
 import Home from "./pages/Home"
 import Browse from "./pages/Browse"
@@ -256,6 +277,7 @@ function SideFoot({ route, onNavigate }) {
    --------------------------------------------------------------------------- */
 export default function App() {
   const route = useRoute()
+  const { canGoBack, canGoForward, goBack, goForward } = useNavigation()
   useWindowDrag()
   const [ready, setReady] = useState(false)
   const [fatal, setFatal] = useState(null)
@@ -266,6 +288,23 @@ export default function App() {
   const [toasts, setToasts] = useState([])
   const [notices, setNotices] = useState([])
   const [onboarding, setOnboarding] = useState(() => localStorage.getItem("juku.onboarded") !== "1")
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("juku.sidebar.collapsed") === "1")
+
+  useEffect(() => {
+    localStorage.setItem("juku.sidebar.collapsed", sidebarCollapsed ? "1" : "0")
+  }, [sidebarCollapsed])
+
+  // 快捷键 ⌘B / Ctrl+B 切换侧栏
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === "b" || e.key === "B")) {
+        e.preventDefault()
+        setSidebarCollapsed((v) => !v)
+      }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [])
 
   useEffect(() => {
     setToastHandler((message, kind) => {
@@ -275,7 +314,10 @@ export default function App() {
       setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3500)
     })
     setPlayerOpener((request) => { setMini(false); setPlayer(request) })
-    initViewer().then(() => setReady(true)).catch(setFatal)
+    initViewer().then(() => {
+      setReady(true)
+      loadFollowing()
+    }).catch(setFatal)
   }, [])
 
   const refreshStatus = useCallback(() => apiGet("/api/desktop/status").then(setStatus).catch(() => {}), [])
@@ -335,10 +377,23 @@ export default function App() {
   return (
     <div className="relative flex h-full bg-surface-0">
       {/* ---------- 侧栏：通高，无独立拖拽条 ---------- */}
-      <aside className="flex w-[var(--side-w)] flex-none flex-col bg-surface-1 shadow-[inset_-1px_0_0_0_var(--hairline)]">
-        {/* macOS 下由 .titlebar-space 让出交通灯留白（见 index.css）；
-            红绿灯是窗口原生绘制的，界面不得重绘。该区域同时可拖动窗口。 */}
-        <div className="titlebar-space drag flex-none" />
+      <aside
+        className={`flex flex-none flex-col bg-surface-1 shadow-[inset_-1px_0_0_0_var(--hairline)] transition-all duration-200 ease-out overflow-hidden ${
+          sidebarCollapsed ? "w-0 opacity-0 pointer-events-none" : "w-[var(--side-w)] opacity-100"
+        }`}
+      >
+        {/* macOS 下红绿灯右侧放置折叠按钮（留足呼吸间距） */}
+        <div className="sidebar-titlebar drag flex-none items-center pr-2">
+          <IconButton
+            className="no-drag text-ink-secondary hover:text-ink hover:bg-[var(--cds-fill-ghost-hover)]"
+            size={28}
+            round={false}
+            onClick={() => setSidebarCollapsed(true)}
+            title="折叠侧栏 (⌘B)"
+          >
+            <SidebarToggleIcon collapsed={false} className="size-[17px]" />
+          </IconButton>
+        </div>
 
         <nav className="flex flex-col gap-px px-2.5">
           {NAV.map(({ path, label, icon: Icon, badge }) => {
@@ -363,11 +418,39 @@ export default function App() {
       <main className="relative flex min-w-0 flex-1 flex-col">
         {/* 播放中隐藏而非卸载：滚动位置、列表状态都留着；收成迷你窗后重新露出 */}
         <div className={playing ? "hidden" : "flex min-h-0 flex-1 flex-col"}>
-          <header className="glass drag relative z-20 flex h-[52px] flex-none items-center gap-2.5 px-[18px] pl-3.5">
-            <IconButton className="no-drag" onClick={() => history.back()} title="后退">
+          <header className={`glass drag relative z-20 flex h-[52px] flex-none items-center gap-2.5 px-[18px] transition-all duration-200 ${
+            sidebarCollapsed ? "main-header-collapsed" : "pl-3.5"
+          }`}>
+            {sidebarCollapsed && (
+              <IconButton
+                className="no-drag text-ink-secondary hover:text-ink hover:bg-[var(--cds-fill-ghost-hover)] -ml-1 mr-0.5"
+                size={28}
+                round={false}
+                onClick={() => setSidebarCollapsed(false)}
+                title="展开侧栏 (⌘B)"
+              >
+                <SidebarToggleIcon collapsed={true} className="size-[17px]" />
+              </IconButton>
+            )}
+
+            <IconButton
+              className={`no-drag transition-opacity duration-150 ${
+                canGoBack ? "text-ink hover:text-ink cursor-pointer" : "text-ink-muted opacity-30 cursor-not-allowed pointer-events-none"
+              }`}
+              onClick={goBack}
+              disabled={!canGoBack}
+              title={canGoBack ? "后退" : "无后退记录"}
+            >
               <ChevronLeft className="size-[18px]" strokeWidth={1.7} />
             </IconButton>
-            <IconButton className="no-drag text-ink-muted opacity-55" onClick={() => history.forward()} title="前进">
+            <IconButton
+              className={`no-drag transition-opacity duration-150 ${
+                canGoForward ? "text-ink hover:text-ink cursor-pointer" : "text-ink-muted opacity-30 cursor-not-allowed pointer-events-none"
+              }`}
+              onClick={goForward}
+              disabled={!canGoForward}
+              title={canGoForward ? "前进" : "无前进记录"}
+            >
               <ChevronRight className="size-[18px]" strokeWidth={1.7} />
             </IconButton>
             <div className="no-drag"><SearchBox /></div>
@@ -397,6 +480,8 @@ export default function App() {
             mini={mini}
             onMiniChange={setMini}
             onClose={() => { setPlayer(null); setMini(false) }}
+            sidebarCollapsed={sidebarCollapsed}
+            onToggleSidebar={() => setSidebarCollapsed((v) => !v)}
           />
         ) : null}
       </main>

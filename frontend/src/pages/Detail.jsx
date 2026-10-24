@@ -5,6 +5,7 @@ import { Button, Card, ErrorBox, IconButton, Segmented, SkeletonPoster, Tag, toa
 import { Poster, Row } from "../components/poster"
 import { categoryOf, coverOf, formatTime, releaseText, titleOf } from "../lib/format"
 import { download, follow, markCompleted, play } from "../actions"
+import { cn } from "../lib/utils"
 
 const PAGE = 30
 

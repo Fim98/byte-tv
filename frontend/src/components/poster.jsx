@@ -5,6 +5,7 @@ import { Check, Download, Heart, Play } from "lucide-react"
 import { coverOf, episodesOf, titleOf } from "@/lib/format"
 import { navigate } from "@/router"
 import { cn } from "@/lib/utils"
+import { follow as globalFollow, isFollowing as checkIsFollowing, subscribeFollowing } from "@/actions"
 import { ProgressBar, Tag } from "./cds"
 
 /* ---------------------------------------------------------------------------
@@ -27,13 +28,18 @@ export function Poster({
   isFollowing,
 }) {
   const [failed, setFailed] = useState(false)
-  const [followed, setFollowed] = useState(() => Boolean(isFollowing ?? drama?.saved ?? drama?.isFollowing))
+  const [, setFollowTick] = useState(0)
   const [downloading, setDownloading] = useState(false)
 
+  // 监听全局追剧状态变更，全站卡片即时响应
   useEffect(() => {
-    if (isFollowing !== undefined) setFollowed(Boolean(isFollowing))
-    else if (drama?.saved !== undefined) setFollowed(Boolean(drama.saved))
-  }, [isFollowing, drama?.saved, drama?.isFollowing])
+    return subscribeFollowing(() => setFollowTick((t) => t + 1))
+  }, [])
+
+  const dramaId = drama?.id ? String(drama.id) : ""
+  const followed = Boolean(
+    isFollowing ?? (dramaId ? checkIsFollowing(dramaId) : false) ?? drama?.saved ?? drama?.isFollowing
+  )
 
   const cover = coverOf(drama)
   const total = episodesOf(drama)
@@ -42,14 +48,14 @@ export function Poster({
 
   const handleFollow = async (e) => {
     e.stopPropagation()
-    if (!onFollow) return
     const next = !followed
-    setFollowed(next)
-    try {
-      const res = await onFollow(next)
-      if (res === false) setFollowed(!next)
-    } catch {
-      setFollowed(!next)
+    await globalFollow(dramaId, next)
+    if (onFollow) {
+      try {
+        await onFollow(next)
+      } catch {
+        // ignore
+      }
     }
   }
 
@@ -110,6 +116,19 @@ export function Poster({
           </Tag>
         ) : null}
 
+        {/* 已加入追剧时，右上角常驻红心标识 */}
+        {followed && (
+          <span
+            className={cn(
+              "absolute z-10 flex size-5 items-center justify-center rounded-full bg-clay text-white shadow-md shadow-clay/30 backdrop-blur-sm animate-fade-up",
+              total ? "right-1.5 top-7" : "right-1.5 top-1.5"
+            )}
+            title="已在追剧清单中"
+          >
+            <Heart className="size-2.5 fill-white text-white" />
+          </span>
+        )}
+
         {badge ? (
           <Tag tone="clay" className={cn("absolute left-1.5 h-[18px] px-1.5 text-[10px]", rank ? "top-8" : "top-1.5")}>
             {badge}
@@ -145,14 +164,14 @@ export function Poster({
                     "group/btn grid size-7 place-items-center rounded-full cursor-pointer select-none",
                     "transition-all duration-150 ease-out active:scale-90",
                     followed
-                      ? "bg-clay/20 text-clay hover:bg-clay/30"
+                      ? "bg-clay text-white shadow-sm shadow-clay/30 hover:bg-clay-hover"
                       : "text-ink-secondary hover:text-ink hover:bg-surface-3 dark:text-white/85 dark:hover:text-white dark:hover:bg-white/20",
                   )}
                 >
                   <Heart
                     className={cn(
                       "size-3.5 transition-transform duration-200 group-hover/btn:scale-115",
-                      followed && "fill-clay stroke-clay",
+                      followed && "fill-white text-white",
                     )}
                     strokeWidth={2.2}
                   />
@@ -188,8 +207,8 @@ export function Poster({
           </div>
         ) : null}
 
-        {/* 标题保持在底部，距离浮岛有充足安全间隔，绝不遮挡 */}
-        <span className="pointer-events-none absolute inset-x-2 bottom-2 z-10 line-clamp-2 text-left text-[12px] font-medium leading-snug text-white [text-shadow:0_1px_6px_rgba(0,0,0,.9)]">
+        {/* 标题保持在底部，距离浮岛有充足安全间隔，单行截断保证排版高度稳定 */}
+        <span className="pointer-events-none absolute inset-x-2 bottom-2 z-10 truncate text-left text-[12px] font-medium leading-snug text-white [text-shadow:0_1px_6px_rgba(0,0,0,.9)]" title={title}>
           {title}
         </span>
 

@@ -47,8 +47,19 @@
 .no-drag { cursor: auto; }
 
 /* macOS 沉浸式标题栏（MacTitleBarHiddenInset）：系统交通灯由窗口原生绘制、浮在内容左上角。
-   侧栏顶端让出等高留白，既不重绘红绿灯，也不让导航被压住。其他平台有原生标题栏，不留白。
-   交通灯只在侧栏区域内，内容区（含播放页）永远不会与它重叠，因此不需要额外的安全区变量。 */
+   侧栏顶端让出留白，并在红绿灯右侧留足呼吸间距（96px，距绿灯约 31px）放置折叠/展开侧栏按键。 */
+.sidebar-titlebar {
+  display: flex;
+  height: 52px;
+  align-items: center;
+  padding-left: 14px;
+}
+html[data-os="darwin"] .sidebar-titlebar {
+  padding-left: 96px;
+}
+html[data-os="darwin"] .main-header-collapsed {
+  padding-left: 96px;
+}
 .titlebar-space { display: none; }
 html[data-os="darwin"] .titlebar-space { display: block; height: 52px; }
 

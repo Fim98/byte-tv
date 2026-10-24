@@ -4,7 +4,7 @@ import { apiGet, apiPost } from "../api"
 import { Empty, ErrorBox, Button, ProgressBar, Segmented, SkeletonPoster, Tag, useAsync } from "../components/cds"
 import { PageHead, Poster, PosterGrid, Row } from "../components/poster"
 import { categoryOf, coverOf, episodesOf, formatTime, releaseText, titleOf } from "../lib/format"
-import { download, follow, play } from "../actions"
+import { download, follow, isFollowing as checkIsFollowing, play, subscribeFollowing } from "../actions"
 import { navigate } from "../router"
 
 const BOARDS = [["hongguo-hot", "总热播"], ["hongguo-real", "真人剧"], ["hongguo-comic", "漫剧"], ["hongguo-ai", "AI 剧"]]
@@ -16,6 +16,11 @@ const GENRES = [["short_play", "真人剧"], ["comic_series", "漫剧"], ["ai_se
 function Hero({ items }) {
   const [index, setIndex] = useState(0)
   const [paused, setPaused] = useState(false)
+  const [, setFollowTick] = useState(0)
+
+  useEffect(() => {
+    return subscribeFollowing(() => setFollowTick((t) => t + 1))
+  }, [])
 
   useEffect(() => {
     if (paused || items.length < 2) return
@@ -27,19 +32,21 @@ function Hero({ items }) {
   const { drama, rank } = items[index % items.length]
   const cover = coverOf(drama)
   const title = titleOf(drama)
+  const isHeroFollowing = checkIsFollowing(drama?.id) || Boolean(drama?.saved)
 
   return (
     <section
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
-      className="relative mb-5 h-[262px] overflow-hidden rounded-lg bg-[#171614]"
+      className="group/hero relative mb-5 h-[262px] overflow-hidden rounded-lg bg-[#171614] select-none"
     >
-      {cover ? <img src={cover} alt="" className="absolute inset-0 size-full scale-110 object-cover blur-2xl" /> : null}
+      {cover ? <img src={cover} alt="" className="absolute inset-0 size-full scale-110 object-cover blur-2xl transition-all duration-500" /> : null}
       {/* 遮罩：保证白字在两种主题下都够对比，不随主题变浅 */}
       <div className="absolute inset-0 bg-gradient-to-r from-black/95 via-black/85 to-black/25" />
       <div className="absolute inset-0 bg-gradient-to-t from-black/55 to-transparent" />
 
-      <div key={index} className="absolute inset-y-0 left-0 flex max-w-[560px] animate-fade-up flex-col justify-center gap-2.5 px-7">
+      {/* 主信息区 */}
+      <div key={index} className="absolute inset-y-0 left-0 flex max-w-[560px] animate-fade-up flex-col justify-center gap-2.5 px-8">
         <div className="flex flex-wrap items-center gap-1.5">
           <Tag className="!bg-clay !text-white">红果热播榜</Tag>
           {rank ? <Tag className="!bg-white/15 !text-white/90">TOP {rank}</Tag> : null}
@@ -47,7 +54,7 @@ function Hero({ items }) {
           {releaseText(drama.releaseStatus) ? <Tag className="!bg-white/15 !text-white/90">{releaseText(drama.releaseStatus)}</Tag> : null}
         </div>
 
-        <h1 className="!text-white text-[30px] font-medium leading-[1.2] tracking-[-.03em]">{title}</h1>
+        <h1 className="!text-white text-[28px] font-medium leading-tight tracking-[-.03em] truncate max-w-full" title={title}>{title}</h1>
 
         <p className="!text-white/60 text-[11.5px]">
           {[episodesOf(drama) ? `全 ${episodesOf(drama)} 集` : "", drama.heat ? `热度 ${drama.heat}` : ""].filter(Boolean).join(" · ")}
@@ -67,11 +74,15 @@ function Hero({ items }) {
           </Button>
           <Button
             size="lg"
-            className="!bg-white/15 backdrop-blur-md !text-white h-[38px] hover:!bg-white/25 active:scale-95 transition-all"
+            className={`backdrop-blur-md h-[38px] transition-all ${
+              isHeroFollowing
+                ? "!bg-clay !text-white shadow-md shadow-clay/40"
+                : "!bg-white/15 !text-white hover:!bg-white/25 active:scale-95"
+            }`}
             icon={Heart}
-            onClick={() => follow(drama.id)}
+            onClick={() => follow(drama.id, !isHeroFollowing)}
           >
-            追剧
+            {isHeroFollowing ? "已追剧" : "追剧"}
           </Button>
           <Button
             size="lg"
@@ -84,28 +95,36 @@ function Hero({ items }) {
         </div>
       </div>
 
+      {/* 右侧海报预览 */}
       {cover ? (
         <button
           type="button"
           onClick={() => navigate(`/drama/${encodeURIComponent(drama.id)}`)}
           title={title}
-          className="absolute right-12 top-1/2 hidden aspect-[9/16] h-[224px] -translate-y-1/2 overflow-hidden rounded-card shadow-film xl:block"
+          className="absolute right-14 top-1/2 hidden aspect-[9/16] h-[224px] -translate-y-1/2 overflow-hidden rounded-card shadow-film xl:block transition-transform hover:scale-[1.02] active:scale-95"
         >
           <img src={cover} alt="" className="size-full object-cover" />
         </button>
       ) : null}
 
-      <div className="absolute bottom-4 left-7 flex items-center gap-1.5">
+      {/* 底部指示器：放大的舒适点击胶囊，无杂乱多余按键 */}
+      <div className="absolute bottom-4 left-8 z-20 flex items-center gap-0.5">
         {items.map((item, i) => (
           <button
             key={i}
             type="button"
-            title={titleOf(item.drama)}
+            title={`切换至第 ${i + 1} 部：${titleOf(item.drama)}`}
             onClick={() => setIndex(i)}
-            className={`h-1 rounded-pill transition-all duration-300 ease-out ${
-              i === index ? "w-5 bg-clay" : "w-1 bg-white/35 hover:bg-white/60"
-            }`}
-          />
+            className="group/ind flex h-6 items-center px-1 cursor-pointer"
+          >
+            <span
+              className={`h-1.5 rounded-full transition-all duration-300 ${
+                i === index
+                  ? "w-7 bg-clay shadow-[0_0_8px_rgba(217,119,87,0.7)]"
+                  : "w-2 bg-white/35 group-hover/ind:bg-white/80 group-hover/ind:w-3.5"
+              }`}
+            />
+          </button>
         ))}
       </div>
     </section>
@@ -199,7 +218,7 @@ function RankingRow() {
             <Poster
               key={item.drama.id} drama={item.drama} rank={item.rank}
               subtitle={item.metric ? item.metric : [episodesOf(item.drama) ? `全 ${episodesOf(item.drama)} 集` : ""].filter(Boolean).join(" · ")}
-              onFollow={() => follow(item.drama.id)}
+              onFollow={(next) => follow(item.drama.id, next)}
               onDownload={() => download(item.drama.id)}
             />
           ))}
@@ -244,7 +263,7 @@ function RecommendRow() {
             <Poster
               key={d.id} drama={d}
               subtitle={[categoryOf(d), episodesOf(d) ? `共 ${episodesOf(d)} 集` : ""].filter(Boolean).join(" · ")}
-              onFollow={() => follow(d.id)}
+              onFollow={(next) => follow(d.id, next)}
               onDownload={() => download(d.id)}
             />
           ))}
@@ -284,7 +303,7 @@ export default function Home() {
             <Poster
               key={f.id} drama={f} isFollowing={true}
               badge={`新增 ${f.newEpisodes} 集`}
-              onFollow={() => follow(f.id)}
+              onFollow={(next) => follow(f.id, next)}
               onDownload={() => download(f.id)}
             />
           ))}
@@ -305,7 +324,7 @@ export default function Home() {
             {data.local.slice(0, 12).map((d) => (
               <Poster
                 key={d.id} drama={d}
-                onFollow={() => follow(d.id)}
+                onFollow={(next) => follow(d.id, next)}
                 onDownload={() => download(d.id)}
               />
             ))}
