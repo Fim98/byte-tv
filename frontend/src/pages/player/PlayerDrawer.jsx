@@ -39,7 +39,7 @@ export const PlayerDrawer = memo(function PlayerDrawer({
       {/* Backdrop overlay for easy close when clicking outside */}
       {open && (
         <div
-          className="absolute inset-0 z-40 bg-black/25 backdrop-blur-[2px] transition-opacity duration-300"
+          className="absolute inset-0 z-40 bg-black/40 backdrop-blur-sm transition-opacity duration-300"
           onClick={onClose}
         />
       )}
@@ -47,20 +47,20 @@ export const PlayerDrawer = memo(function PlayerDrawer({
       {/* Drawer slide-over container */}
       <aside
         className={cn(
-          "absolute inset-y-0 right-0 z-50 flex w-80 max-w-[85vw] flex-col bg-surface-1 p-4 shadow-2xl border-l border-subtle transition-transform duration-300 ease-out select-none",
+          "absolute inset-y-0 right-0 z-50 flex w-80 max-w-[85vw] flex-col bg-[#121214]/95 text-white p-4 shadow-2xl border-l border-white/10 backdrop-blur-xl transition-transform duration-300 ease-out select-none",
           open ? "translate-x-0" : "translate-x-full pointer-events-none"
         )}
       >
         {/* Header */}
-        <div className="flex items-center justify-between pb-3 border-b border-hairline">
+        <div className="flex items-center justify-between pb-3 border-b border-white/10">
           <div className="flex items-baseline gap-2">
-            <h3 className="text-sm font-semibold text-ink">剧集列表</h3>
-            <span className="text-xs text-ink-muted">共 {episodes.length} 集</span>
+            <h3 className="text-sm font-semibold text-white">剧集列表</h3>
+            <span className="text-xs text-white/60">共 {episodes.length} 集</span>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="flex size-7 items-center justify-center rounded-full text-ink-muted hover:bg-surface-3 hover:text-ink transition"
+            className="flex size-7 items-center justify-center rounded-full text-white/60 hover:bg-white/10 hover:text-white transition"
           >
             <X className="size-4" />
           </button>
@@ -74,9 +74,9 @@ export const PlayerDrawer = memo(function PlayerDrawer({
             value={jumpInput}
             onChange={(e) => setJumpInput(e.target.value.replace(/\D/g, ""))}
             onKeyDown={handleJump}
-            className="h-8 w-full rounded-pill bg-surface-2 pl-3 pr-8 text-xs text-ink placeholder:text-ink-muted border border-subtle focus:border-clay outline-none"
+            className="h-8 w-full rounded-pill bg-white/10 pl-3 pr-8 text-xs text-white placeholder:text-white/40 border border-white/15 focus:border-clay outline-none"
           />
-          <Search className="pointer-events-none absolute right-3 size-3.5 text-ink-muted" />
+          <Search className="pointer-events-none absolute right-3 size-3.5 text-white/40" />
         </div>
 
         {/* Episode pagination tabs */}
@@ -95,7 +95,7 @@ export const PlayerDrawer = memo(function PlayerDrawer({
                     "h-6 rounded-pill px-2.5 text-[11px] font-medium transition",
                     isActive
                       ? "bg-clay text-white shadow-sm"
-                      : "bg-surface-2 text-ink-secondary hover:bg-surface-3 hover:text-ink border border-subtle"
+                      : "bg-white/10 text-white/70 hover:bg-white/20 hover:text-white border border-white/10"
                   )}
                 >
                   {start}-{end}
@@ -120,12 +120,12 @@ export const PlayerDrawer = memo(function PlayerDrawer({
                   onClick={() => onSelectEpisode(ep.index)}
                   title={ep.title || `第 ${ep.episode || ep.index} 集`}
                   className={cn(
-                    "group relative flex h-10 flex-col items-center justify-center rounded-lg text-xs font-medium transition-all duration-150 active:scale-95 border border-transparent",
+                    "group relative flex h-10 flex-col items-center justify-center rounded-lg text-xs font-medium transition-all duration-150 active:scale-95",
                     isCurrent
-                      ? "bg-clay text-white shadow-md shadow-clay/30 font-bold scale-[1.03]"
+                      ? "bg-clay text-white shadow-md shadow-clay/30 font-bold scale-[1.03] border border-transparent"
                       : isWatched
-                      ? "bg-surface-2/60 text-ink-muted hover:bg-surface-3 hover:text-ink border-subtle"
-                      : "bg-surface-2 text-ink hover:bg-surface-3 border-subtle"
+                      ? "bg-white/5 text-white/40 hover:bg-white/10 hover:text-white/80 border border-white/5"
+                      : "bg-white/10 text-white/90 hover:bg-white/20 hover:text-white border border-white/10"
                   )}
                 >
                   <span className="font-mono text-xs">{ep.episode || ep.index}</span>
@@ -143,10 +143,10 @@ export const PlayerDrawer = memo(function PlayerDrawer({
         </div>
 
         {/* Footer options */}
-        <div className="mt-auto border-t border-hairline pt-3 flex flex-col gap-2">
+        <div className="mt-auto border-t border-white/10 pt-3 flex flex-col gap-2">
           {/* Auto next toggle */}
           <div className="flex items-center justify-between">
-            <span className="text-xs text-ink-secondary">自动连播下一集</span>
+            <span className="text-xs text-white/80">自动连播下一集</span>
             <button
               type="button"
               role="switch"
@@ -154,7 +154,7 @@ export const PlayerDrawer = memo(function PlayerDrawer({
               onClick={onToggleAutoNext}
               className={cn(
                 "relative h-5 w-9 rounded-full transition-colors",
-                autoNext ? "bg-clay" : "bg-surface-3 border border-subtle"
+                autoNext ? "bg-clay" : "bg-white/20"
               )}
             >
               <span
@@ -167,8 +167,8 @@ export const PlayerDrawer = memo(function PlayerDrawer({
           </div>
 
           {/* Keyboard shortcut tips */}
-          <div className="rounded-lg bg-surface-2 p-2.5 text-[11px] leading-relaxed text-ink-muted border border-hairline">
-            <span className="font-medium text-ink-secondary">快捷键提示：</span>
+          <div className="rounded-lg bg-white/5 p-2.5 text-[11px] leading-relaxed text-white/60 border border-white/10">
+            <span className="font-medium text-white/80">快捷键提示：</span>
             <div className="mt-1 grid grid-cols-2 gap-1 text-[10.5px]">
               <span>空格：播放 / 暂停</span>
               <span>← / →：快退 / 快进 5s</span>

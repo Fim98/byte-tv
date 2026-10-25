@@ -298,8 +298,8 @@ export default function Player({ request, mini, onMiniChange, onClose, sidebarCo
       ref={rootRef}
       className={cn(
         mini
-          ? "absolute bottom-5 right-5 z-[60] w-[260px] overflow-hidden rounded-xl bg-surface-1 shadow-2xl border border-subtle animate-fade-up"
-          : "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-surface-0 text-ink",
+          ? "absolute bottom-5 right-5 z-[60] w-[260px] overflow-hidden rounded-xl bg-black/95 shadow-2xl border border-white/20 animate-fade-up"
+          : "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-black text-white",
         !mini && fs && "fixed inset-0 z-50 bg-black text-white"
       )}
       style={mini ? { aspectRatio: videoAspect > 0 ? videoAspect : 16 / 9 } : undefined}
@@ -309,9 +309,7 @@ export default function Player({ request, mini, onMiniChange, onClose, sidebarCo
         <header
           className={cn(
             "drag relative z-30 flex h-14 flex-none items-center justify-between px-4 transition-all duration-300",
-            fs
-              ? "bg-gradient-to-b from-black/80 via-black/40 to-transparent text-white"
-              : "bg-surface-1/90 border-b border-hairline text-ink backdrop-blur-md",
+            "bg-gradient-to-b from-black/85 via-black/45 to-transparent text-white",
             sidebarCollapsed && !fs && "main-header-collapsed",
             hideControls && "pointer-events-none opacity-0"
           )}
@@ -323,7 +321,7 @@ export default function Player({ request, mini, onMiniChange, onClose, sidebarCo
                 type="button"
                 onClick={onToggleSidebar}
                 title="展开侧栏 (⌘B)"
-                className="flex size-8 items-center justify-center rounded-full bg-surface-2 text-ink hover:bg-surface-3 border border-subtle transition -ml-1 mr-0.5"
+                className="flex size-8 items-center justify-center rounded-full bg-white/10 text-white/90 hover:bg-white/20 transition -ml-1 mr-0.5"
               >
                 <SidebarToggleIcon collapsed={true} className="size-4" />
               </button>
@@ -333,27 +331,17 @@ export default function Player({ request, mini, onMiniChange, onClose, sidebarCo
               type="button"
               onClick={onClose}
               title="返回 (Esc)"
-              className={cn(
-                "flex size-8 items-center justify-center rounded-full transition",
-                fs
-                  ? "bg-white/10 text-white/90 backdrop-blur-md hover:bg-white/25 hover:text-white"
-                  : "bg-surface-2 text-ink hover:bg-surface-3 border border-subtle"
-              )}
+              className="flex size-8 items-center justify-center rounded-full bg-white/10 text-white/90 backdrop-blur-md hover:bg-white/25 hover:text-white transition"
             >
               <ChevronLeft className="size-5" />
             </button>
 
             <div className="flex flex-col min-w-0">
               <div className="flex items-center gap-2">
-                <span className={cn("truncate text-sm font-semibold", fs ? "text-white drop-shadow" : "text-ink")}>
+                <span className="truncate text-sm font-semibold text-white drop-shadow">
                   {dramaTitle}
                 </span>
-                <span
-                  className={cn(
-                    "rounded-full px-2 py-0.5 text-[11px] font-medium",
-                    fs ? "bg-white/15 text-white/90" : "bg-surface-2 text-ink-secondary border border-subtle"
-                  )}
-                >
+                <span className="rounded-full bg-white/15 px-2 py-0.5 text-[11px] font-medium text-white/90">
                   {episodeTitle}
                 </span>
               </div>
@@ -363,12 +351,7 @@ export default function Player({ request, mini, onMiniChange, onClose, sidebarCo
           {/* Right: Badges & Drawer button */}
           <div className="no-drag flex items-center gap-2">
             {danmakuOn && (
-              <span
-                className={cn(
-                  "flex items-center gap-1 rounded-pill px-2.5 py-1 text-xs",
-                  fs ? "bg-white/10 text-white/80" : "bg-surface-2 text-ink-secondary border border-subtle"
-                )}
-              >
+              <span className="flex items-center gap-1 rounded-pill bg-white/10 px-2.5 py-1 text-xs text-white/80">
                 <Sparkles className="size-3.5 text-clay" />
                 <span>{danmaku.length} 弹幕</span>
               </span>
@@ -382,9 +365,7 @@ export default function Player({ request, mini, onMiniChange, onClose, sidebarCo
                 "flex h-8 items-center gap-1.5 rounded-pill px-3 text-xs font-medium transition",
                 drawerOpen
                   ? "bg-clay text-white shadow-sm"
-                  : fs
-                  ? "bg-white/10 text-white/90 hover:bg-white/20"
-                  : "bg-surface-2 text-ink hover:bg-surface-3 border border-subtle"
+                  : "bg-white/10 text-white/90 hover:bg-white/20"
               )}
             >
               选集 ({index}/{episodes.length || 1})

@@ -2,7 +2,7 @@
 # Byte TV（Wails v3）构建公共变量。
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-VERSION="${VERSION:-0.1.2}"
+VERSION="${VERSION:-0.1.3}"
 OUT="${OUT:-$ROOT/bin}"
 export GOTOOLCHAIN="${GOTOOLCHAIN:-go1.25.0+auto}"
 LDFLAGS="-s -w -X main.version=${VERSION}"

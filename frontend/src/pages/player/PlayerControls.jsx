@@ -17,7 +17,7 @@ import { PLAYER_RATES } from "../../lib/playerPrefs"
 import { cn } from "../../lib/utils"
 
 /* Scrub bar component with hover preview and dragging support */
-function ScrubBar({ value, buffered, duration, onChange, fs }) {
+function ScrubBar({ value, buffered, duration, onChange }) {
   const barRef = useRef(null)
   const [hoverPct, setHoverPct] = useState(null)
   const [dragging, setDragging] = useState(false)
@@ -57,19 +57,11 @@ function ScrubBar({ value, buffered, duration, onChange, fs }) {
       }}
     >
       {/* Track base */}
-      <div
-        className={cn(
-          "relative h-1 w-full rounded-full transition-all duration-200 group-hover:h-2",
-          fs ? "bg-white/20" : "bg-[var(--rail)]"
-        )}
-      >
+      <div className="relative h-1 w-full rounded-full bg-white/20 transition-all duration-200 group-hover:h-2">
         {/* Buffered progress */}
         {buffered > 0 && (
           <div
-            className={cn(
-              "absolute inset-y-0 left-0 rounded-full",
-              fs ? "bg-white/30" : "bg-[var(--cds-alpha-3)]"
-            )}
+            className="absolute inset-y-0 left-0 rounded-full bg-white/30"
             style={{ width: `${Math.min(100, Math.max(0, buffered * 100))}%` }}
           />
         )}
@@ -93,12 +85,7 @@ function ScrubBar({ value, buffered, duration, onChange, fs }) {
       {/* Hover time tooltip */}
       {hoverPct !== null && duration > 0 && (
         <div
-          className={cn(
-            "pointer-events-none absolute -top-8 -translate-x-1/2 rounded-md px-2 py-0.5 text-[11px] font-mono shadow-xl backdrop-blur-md",
-            fs
-              ? "bg-black/90 text-white border border-white/10"
-              : "bg-surface-popover text-ink border border-subtle shadow-popover"
-          )}
+          className="pointer-events-none absolute -top-8 -translate-x-1/2 rounded-md bg-black/90 px-2 py-0.5 text-[11px] font-mono text-white border border-white/10 shadow-xl backdrop-blur-md"
           style={{ left: `${hoverPct * 100}%` }}
         >
           {formatTime(hoverPct * duration)}
@@ -109,7 +96,7 @@ function ScrubBar({ value, buffered, duration, onChange, fs }) {
 }
 
 /* Volume popover scrub slider */
-function VolumeControl({ muted, volume, onToggleMute, onChangeVolume, fs }) {
+function VolumeControl({ muted, volume, onToggleMute, onChangeVolume }) {
   const [hovered, setHovered] = useState(false)
 
   return (
@@ -122,12 +109,7 @@ function VolumeControl({ muted, volume, onToggleMute, onChangeVolume, fs }) {
         type="button"
         onClick={onToggleMute}
         title={muted ? "取消静音 (M)" : "静音 (M)"}
-        className={cn(
-          "flex size-8 items-center justify-center rounded-full transition",
-          fs
-            ? "text-white/80 hover:bg-white/15 hover:text-white"
-            : "text-ink-secondary hover:bg-[var(--cds-fill-ghost-hover)] hover:text-ink"
-        )}
+        className="flex size-8 items-center justify-center rounded-full text-white/80 hover:bg-white/15 hover:text-white transition"
       >
         {muted || volume === 0 ? <VolumeX className="size-4" /> : <Volume2 className="size-4" />}
       </button>
@@ -145,10 +127,7 @@ function VolumeControl({ muted, volume, onToggleMute, onChangeVolume, fs }) {
           step="0.02"
           value={muted ? 0 : volume}
           onChange={(e) => onChangeVolume(Number(e.target.value))}
-          className={cn(
-            "h-1.5 w-full cursor-pointer appearance-none rounded-full accent-clay outline-none",
-            fs ? "bg-white/25" : "bg-[var(--rail)]"
-          )}
+          className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-white/25 accent-clay outline-none"
         />
       </div>
     </div>
@@ -189,26 +168,16 @@ export const PlayerControls = memo(function PlayerControls({
   const progressRatio = duration > 0 ? position / duration : 0
   const bufferedRatio = duration > 0 ? buffered / duration : 0
 
-  const btnBaseClass = fs
-    ? "text-white/80 hover:bg-white/15 hover:text-white"
-    : "text-ink-secondary hover:bg-[var(--cds-fill-ghost-hover)] hover:text-ink"
+  const btnBaseClass = "text-white/80 hover:bg-white/15 hover:text-white"
 
   return (
-    <div
-      className={cn(
-        "relative z-30 flex flex-col px-4 pb-3 pt-1 select-none transition-colors",
-        fs
-          ? "bg-gradient-to-t from-black/90 via-black/50 to-transparent text-white"
-          : "bg-surface-1 border-t border-hairline text-ink"
-      )}
-    >
+    <div className="relative z-30 flex flex-col bg-gradient-to-t from-black/90 via-black/50 to-transparent px-4 pb-3 pt-1 text-white select-none transition-colors">
       {/* Tier 1: Scrub bar */}
       <ScrubBar
         value={progressRatio}
         buffered={bufferedRatio}
         duration={duration}
         onChange={onSeekTo}
-        fs={fs}
       />
 
       {/* Tier 2: Action Control Dock */}
@@ -245,24 +214,18 @@ export const PlayerControls = memo(function PlayerControls({
             volume={volume}
             onToggleMute={onToggleMute}
             onChangeVolume={onChangeVolume}
-            fs={fs}
           />
 
           {/* Time display */}
           <div className="ml-1 flex items-center text-xs font-mono tracking-tight">
-            <span className={cn("font-medium", fs ? "text-white" : "text-ink")}>{formatTime(position)}</span>
-            <span className={cn("mx-1", fs ? "text-white/40" : "text-ink-muted")}>/</span>
-            <span className={cn(fs ? "text-white/60" : "text-ink-secondary")}>{formatTime(duration)}</span>
+            <span className="font-medium text-white">{formatTime(position)}</span>
+            <span className="mx-1 text-white/40">/</span>
+            <span className="text-white/60">{formatTime(duration)}</span>
           </div>
 
           {/* Source indicator */}
           {source && (
-            <span
-              className={cn(
-                "ml-2 hidden rounded-pill px-2 py-0.5 text-[10px] sm:inline-block",
-                fs ? "bg-white/10 text-white/70" : "bg-surface-2 text-ink-muted border border-subtle"
-              )}
-            >
+            <span className="ml-2 hidden rounded-pill bg-white/10 px-2 py-0.5 text-[10px] text-white/70 sm:inline-block">
               {source}
             </span>
           )}
@@ -279,7 +242,7 @@ export const PlayerControls = memo(function PlayerControls({
               "flex h-7 items-center gap-1 rounded-pill px-2.5 text-xs font-medium transition",
               danmakuOn
                 ? "bg-clay text-white shadow-sm"
-                : cn("border border-subtle", btnBaseClass)
+                : cn("border border-white/15", btnBaseClass)
             )}
           >
             <Sparkles className="size-3.5" />
@@ -302,7 +265,7 @@ export const PlayerControls = memo(function PlayerControls({
             </button>
 
             {speedMenuOpen && (
-              <div className="absolute bottom-9 right-0 z-50 flex flex-col gap-0.5 rounded-lg bg-surface-popover p-1 shadow-popover border border-subtle min-w-[70px]">
+              <div className="absolute bottom-9 right-0 z-50 flex flex-col gap-0.5 rounded-lg bg-black/90 p-1 shadow-2xl backdrop-blur-md border border-white/15 min-w-[70px]">
                 {PLAYER_RATES.map((r) => (
                   <button
                     key={r}
@@ -313,7 +276,7 @@ export const PlayerControls = memo(function PlayerControls({
                     }}
                     className={cn(
                       "flex items-center justify-center rounded px-3 py-1.5 text-xs font-mono transition",
-                      rate === r ? "bg-clay font-bold text-white" : "text-ink hover:bg-[var(--cds-fill-ghost-hover)]"
+                      rate === r ? "bg-clay font-bold text-white" : "text-white/80 hover:bg-white/15 hover:text-white"
                     )}
                   >
                     {r}×
@@ -338,7 +301,7 @@ export const PlayerControls = memo(function PlayerControls({
               </button>
 
               {qualityMenuOpen && (
-                <div className="absolute bottom-9 right-0 z-50 flex flex-col gap-0.5 rounded-lg bg-surface-popover p-1 shadow-popover border border-subtle min-w-[90px]">
+                <div className="absolute bottom-9 right-0 z-50 flex flex-col gap-0.5 rounded-lg bg-black/90 p-1 shadow-2xl backdrop-blur-md border border-white/15 min-w-[90px]">
                   {qualities.map((q) => (
                     <button
                       key={q.value}
@@ -349,7 +312,7 @@ export const PlayerControls = memo(function PlayerControls({
                       }}
                       className={cn(
                         "flex items-center justify-center rounded px-3 py-1.5 text-xs transition",
-                        quality === q.value ? "bg-clay font-medium text-white" : "text-ink hover:bg-[var(--cds-fill-ghost-hover)]"
+                        quality === q.value ? "bg-clay font-medium text-white" : "text-white/80 hover:bg-white/15 hover:text-white"
                       )}
                     >
                       {q.label}
