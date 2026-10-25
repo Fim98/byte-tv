@@ -43,14 +43,12 @@ export default function Settings({ section = "", status, onChanged }) {
   const [proxy, setProxy] = useState("")
   const [autoNext, setAutoNext] = useLocalToggle("juku.autonext", true)
   const [danmaku, setDanmaku] = useLocalToggle("juku.danmaku", true)
-  const [closeToTray, setCloseToTray] = useState(true)
   const [version, setVersion] = useState("")
   const [theme, setThemeState] = useState(getTheme)
   const gridRef = useRef(null)
 
   useEffect(() => {
     apiGet("/api/ui/config").then((c) => { setConfig(c); setProxy(c.proxyURL || "") }).catch(setError)
-    native?.getSettings?.().then((s) => setCloseToTray(s?.closeToTray !== false)).catch(() => {})
     native?.getVersion?.().then(setVersion).catch(() => {})
   }, [])
 
@@ -209,14 +207,8 @@ export default function Settings({ section = "", status, onChanged }) {
       default:
         return (
           <>
-            <Item title="主题" desc="界面配色，跟随系统时读取 macOS / Windows 的外观设置。">
+            <Item title="主题" desc="界面配色，跟随系统时读取 macOS / Windows 的外观设置。" last>
               <Segmented value={theme} options={THEMES} onChange={(t) => { setTheme(t); setThemeState(t) }} />
-            </Item>
-            <Item title="关闭窗口时" desc="开启后关闭窗口保留在后台，下载与合并不中断。" last>
-              <Switch
-                checked={closeToTray}
-                onChange={(v) => { setCloseToTray(v); native?.setSettings?.({ closeToTray: v }) }}
-              />
             </Item>
           </>
         )

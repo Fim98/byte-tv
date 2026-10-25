@@ -3,7 +3,7 @@
 version: "3"
 
 vars:
-  VERSION: '{{.VERSION | default "0.1.4"}}'
+  VERSION: '{{.VERSION | default "0.1.5"}}'
 
 env:
   VERSION: "{{.VERSION}}"

@@ -34,7 +34,6 @@ type shell struct {
 
 	app    *application.App
 	win    *application.WebviewWindow
-	tray   *application.SystemTray
 	notify *notifications.NotificationService
 
 	forceQuit    atomic.Bool
@@ -108,12 +107,9 @@ func (s *shell) Native(action string, body json.RawMessage) (any, error) {
 	case "getVersion":
 		return version, nil
 	case "getSettings":
-		return map[string]any{"closeToTray": s.closeToTray(), "autoUpdate": updateURL != ""}, nil
+		return map[string]any{"autoUpdate": updateURL != ""}, nil
 	case "setSettings":
-		if v, ok := args["closeToTray"].(bool); ok {
-			s.writePref("bytetv.closeToTray", v)
-		}
-		return map[string]any{"closeToTray": s.closeToTray()}, nil
+		return map[string]any{}, nil
 	case "checkForUpdates":
 		return s.checkForUpdates(), nil
 	case "notify":
@@ -140,11 +136,6 @@ func (s *shell) prefs() map[string]any {
 		_ = json.Unmarshal(data, &prefs)
 	}
 	return prefs
-}
-
-func (s *shell) closeToTray() bool {
-	v, ok := s.prefs()["bytetv.closeToTray"].(bool)
-	return !ok || v
 }
 
 func (s *shell) writePref(key string, value any) {
@@ -191,8 +182,8 @@ func (s *shell) run() {
 		Description: "Byte TV",
 		Icon:        shellAppIcon(),
 		Services:    services,
-		Mac:         application.MacOptions{ApplicationShouldTerminateAfterLastWindowClosed: false},
-		Linux:       application.LinuxOptions{DisableQuitOnLastWindowClosed: true, ProgramName: "bytetv"},
+		Mac:         application.MacOptions{ApplicationShouldTerminateAfterLastWindowClosed: true},
+		Linux:       application.LinuxOptions{DisableQuitOnLastWindowClosed: false, ProgramName: "bytetv"},
 		Windows:     application.WindowsOptions{},
 		SingleInstance: &application.SingleInstanceOptions{
 			UniqueID:               appID,
@@ -232,17 +223,11 @@ func (s *shell) run() {
 		if s.forceQuit.Load() {
 			return
 		}
-		if s.closeToTray() {
-			e.Cancel()
-			s.win.Hide()
-			return
-		}
 		e.Cancel()
 		s.app.Quit()
 	})
 
 	s.app.Menu.Set(s.buildMenu())
-	s.buildTray()
 	s.initUpdater()
 
 	go s.monitorActivity()
@@ -316,23 +301,6 @@ func (s *shell) buildMenu() *application.Menu {
 	return menu
 }
 
-func (s *shell) buildTray() {
-	s.tray = s.app.SystemTray.New()
-	if runtime.GOOS == "darwin" {
-		s.tray.SetTemplateIcon(trayTemplatePNG())
-	} else {
-		s.tray.SetIcon(appIconPNG(64))
-	}
-	s.tray.SetTooltip("Byte TV")
-	menu := s.app.NewMenu()
-	menu.Add("显示 Byte TV").OnClick(func(*application.Context) { s.showWindow() })
-	menu.Add("下载任务").OnClick(func(*application.Context) { s.navigate("/downloads") })
-	menu.AddSeparator()
-	menu.Add("退出").OnClick(func(*application.Context) { s.app.Quit() })
-	s.tray.SetMenu(menu)
-	s.tray.OnClick(func() { s.showWindow() })
-}
-
 // shouldQuit：有下载/合并任务时先确认（对话框是异步的，确认后再次 Quit）。
 func (s *shell) shouldQuit() bool {
 	if s.forceQuit.Load() {
@@ -364,7 +332,7 @@ func (s *shell) shouldQuit() bool {
 	return false
 }
 
-// monitorActivity：托盘提示、阻止休眠、完成通知。
+// monitorActivity：阻止休眠、完成通知。
 func (s *shell) monitorActivity() {
 	defer recoverInto(s, "activity monitor")
 	ticker := time.NewTicker(3 * time.Second)
@@ -374,10 +342,8 @@ func (s *shell) monitorActivity() {
 		active := downloads + merges
 		if active > 0 {
 			s.power.acquire("Byte TV 正在下载/合并视频")
-			s.tray.SetTooltip(fmt.Sprintf("Byte TV · %d 个下载、%d 个合并进行中", downloads, merges))
 		} else {
 			s.power.release()
-			s.tray.SetTooltip("Byte TV")
 			if s.lastActive > 0 {
 				s.sendNotification("Byte TV", "下载与合并任务已全部完成")
 			}
