@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	_ "embed"
 	"encoding/base64"
 	"encoding/binary"
 	"image"
@@ -25,41 +26,108 @@ func updatePublicKey() []byte {
 }
 
 // ==========================================================================
-// 应用图标 —— 「连播双键」
+// 应用图标 —— 陶土瓷感底板 + 拟物毛玻璃亚克力播放键
 //
-// 全部几何量都定义在 1024 的设计坐标系里，绘制时按目标像素换算，因此任意尺寸都
-// 保持同一套比例与 1px 抗锯齿带。仓库里依旧不放任何二进制素材。
+// 高清母图以 1024x1024 嵌入二进制：
+//   - embeddedIconMac: macOS HIG 标准，824 squircle 居中，四周 100 留白，带原生柔和漫反射投影
+//   - embeddedIconFull: 满幅 1024 squircle，供 Windows / Linux 任务栏与窗口图标使用
 //
-// 造型参数（1024 基准）：
-//   底板     满幅圆角方块，圆角 230（22.5%，对齐 macOS squircle 曲率）
-//   前键     300 × 360 的播放三角，三个顶角切成 50 圆角，纯白
-//   后键     与前键同形，向右上错位 (140,-140)，白 30%
-//   内环     2 单位宽的白 14% 描边，缩小后自然消失
-//
-// 错位量是这套图标唯一的可调参数：小于 9% 后键会读成一层投影，大于 18% 会散成
-// 两个互不相干的图形。
-//
-// 实现要点：播放键的圆角是「边线不动、顶角用二次曲线切掉 t 段」，等价形状是一个
-// 凸多边形。不要用「各边内缩 r」去求距离场 —— 那会把锐角三角形整体缩小一半。
+// 任意尺寸调用时自动采用高质量面积加权降采样，保证在 16~512 各级像素下保持边缘清晰锐利。
 // ==========================================================================
 
-const (
-	iconClayR = 217.0 // #D97757
-	iconClayG = 119.0
-	iconClayB = 87.0
+//go:embed assets/icon_mac.png
+var embeddedIconMac []byte
 
-	iconCorner   = 230.0 // 底板圆角
-	iconKeyTrim  = 50.0  // 播放键顶角切除量
-	iconGhostDX  = 140.0 // 后键错位量
-	iconGhostDY  = -140.0
-	iconGhostA   = 0.30 // 后键不透明度
-	iconRingA    = 0.14 // 内环不透明度
-	iconRingW    = 2.0  // 内环宽度
-	iconInsetMac = 824.0 / 1024.0
-)
+//go:embed assets/icon_full.png
+var embeddedIconFull []byte
 
-// 前键三角形（未切角）
+// appIconPNG 满幅应用图标：Windows 任务栏 / .ico / 窗口与对话框图标。
+func appIconPNG(size int) []byte {
+	return resizeIcon(embeddedIconFull, size)
+}
+
+// appIconMacOSPNG macOS 应用图标：squircle 缩到 824 居中，四周留白 100，带 macOS 原生柔和投影。
+func appIconMacOSPNG(size int) []byte {
+	return resizeIcon(embeddedIconMac, size)
+}
+
+func resizeIcon(srcData []byte, targetSize int) []byte {
+	if targetSize <= 0 || targetSize == 1024 {
+		return srcData
+	}
+	srcImg, err := png.Decode(bytes.NewReader(srcData))
+	if err != nil {
+		return srcData
+	}
+	srcB := srcImg.Bounds()
+	srcW := srcB.Dx()
+	srcH := srcB.Dy()
+	if srcW == targetSize && srcH == targetSize {
+		return srcData
+	}
+
+	dst := image.NewNRGBA(image.Rect(0, 0, targetSize, targetSize))
+	scaleX := float64(srcW) / float64(targetSize)
+	scaleY := float64(srcH) / float64(targetSize)
+
+	for y := 0; y < targetSize; y++ {
+		for x := 0; x < targetSize; x++ {
+			x0 := float64(x) * scaleX
+			x1 := float64(x+1) * scaleX
+			y0 := float64(y) * scaleY
+			y1 := float64(y+1) * scaleY
+
+			var rSum, gSum, bSum, aSum, totalWeight float64
+
+			ix0 := int(math.Floor(x0))
+			ix1 := int(math.Ceil(x1))
+			iy0 := int(math.Floor(y0))
+			iy1 := int(math.Ceil(y1))
+
+			for sy := iy0; sy < iy1; sy++ {
+				if sy < 0 || sy >= srcH {
+					continue
+				}
+				wy := math.Min(float64(sy+1), y1) - math.Max(float64(sy), y0)
+				if wy <= 0 {
+					continue
+				}
+				for sx := ix0; sx < ix1; sx++ {
+					if sx < 0 || sx >= srcW {
+						continue
+					}
+					wx := math.Min(float64(sx+1), x1) - math.Max(float64(sx), x0)
+					if wx <= 0 {
+						continue
+					}
+					weight := wx * wy
+					r, g, b, a := srcImg.At(sx, sy).RGBA()
+					rSum += float64(r>>8) * weight
+					gSum += float64(g>>8) * weight
+					bSum += float64(b>>8) * weight
+					aSum += float64(a>>8) * weight
+					totalWeight += weight
+				}
+			}
+
+			if totalWeight > 0 {
+				dst.SetNRGBA(x, y, color.NRGBA{
+					R: uint8(rSum/totalWeight + 0.5),
+					G: uint8(gSum/totalWeight + 0.5),
+					B: uint8(bSum/totalWeight + 0.5),
+					A: uint8(aSum/totalWeight + 0.5),
+				})
+			}
+		}
+	}
+
+	var buf bytes.Buffer
+	_ = png.Encode(&buf, dst)
+	return buf.Bytes()
+}
+
 const (
+	iconKeyTrim = 50.0
 	keyAX, keyAY = 290.0, 390.0
 	keyBX, keyBY = 290.0, 750.0
 	keyCX, keyCY = 590.0, 570.0
@@ -67,61 +135,7 @@ const (
 
 type point struct{ x, y float64 }
 
-// 缓存：主键多边形、后键多边形、模板三角多边形（各自的半平面表示）
-var (
-	keyPlanes   = buildHalfPlanes(keyPolygon(1, 0, 0))
-	ghostPlanes = buildHalfPlanes(keyPolygon(1, iconGhostDX, iconGhostDY))
-	// 菜单栏：单键等比放大到 700 × 840 居中，顶点 A 落在 (162,92)
-	trayPlanes = buildHalfPlanes(keyPolygon(840.0/360.0, 162-keyAX*840.0/360.0, 92-keyAY*840.0/360.0))
-)
-
-// appIconPNG 满幅应用图标：Windows 任务栏 / .ico / 窗口与对话框图标。
-func appIconPNG(size int) []byte { return iconPNG(size, false) }
-
-// appIconMacOSPNG macOS 应用图标：squircle 缩到 824 居中，四周留白 100，
-// 在 Dock 里和系统应用的视觉重量才对得上。
-func appIconMacOSPNG(size int) []byte { return iconPNG(size, true) }
-
-func iconPNG(size int, macInset bool) []byte {
-	img := image.NewNRGBA(image.Rect(0, 0, size, size))
-	scale := 1.0
-	if macInset {
-		scale = iconInsetMac
-	}
-	pxPerUnit := scale * float64(size) / 1024.0
-	step := 1.0 / float64(size)
-
-	for y := 0; y < size; y++ {
-		for x := 0; x < size; x++ {
-			// 像素中心 → 1024 设计坐标（macOS 模式先反向放大，让画面整体内缩）
-			ux := (((float64(x)+0.5)*step-0.5)/scale + 0.5) * 1024
-			uy := (((float64(y)+0.5)*step-0.5)/scale + 0.5) * 1024
-
-			base := roundedRectCoverage(ux, uy, 0, 0, 1024, 1024, iconCorner, pxPerUnit)
-			if base <= 0 {
-				continue
-			}
-			inner := roundedRectCoverage(ux, uy, iconRingW, iconRingW, 1024-iconRingW, 1024-iconRingW, iconCorner-1, pxPerUnit)
-			ring := math.Max(0, base-inner)
-
-			ghost := convexCoverage(ghostPlanes, ux, uy, pxPerUnit) * base
-			front := convexCoverage(keyPlanes, ux, uy, pxPerUnit) * base
-
-			r, g, b := iconClayR, iconClayG, iconClayB
-			r, g, b = lerp(r, 255, iconGhostA*ghost), lerp(g, 255, iconGhostA*ghost), lerp(b, 255, iconGhostA*ghost)
-			r, g, b = lerp(r, 255, front), lerp(g, 255, front), lerp(b, 255, front)
-			r, g, b = lerp(r, 255, iconRingA*ring), lerp(g, 255, iconRingA*ring), lerp(b, 255, iconRingA*ring)
-
-			img.SetNRGBA(x, y, color.NRGBA{
-				R: uint8(r + 0.5),
-				G: uint8(g + 0.5),
-				B: uint8(b + 0.5),
-				A: uint8(255*base + 0.5),
-			})
-		}
-	}
-	return encodePNG(img)
-}
+var trayPlanes = buildHalfPlanes(keyPolygon(840.0/360.0, 162-keyAX*840.0/360.0, 92-keyAY*840.0/360.0))
 
 // trayTemplatePNG macOS 菜单栏模板图标（黑色 + 透明，系统自动反色适配深浅色）。
 // 菜单栏尺寸下底板会吃掉三角一半的呼吸，所以只保留前键剪影。

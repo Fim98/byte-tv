@@ -158,6 +158,29 @@ func (s *shell) writePref(key string, value any) {
 
 func mustJSON(v any) string { b, _ := json.Marshal(v); return string(b) }
 
+func isMacAppBundle() bool {
+	exe, err := os.Executable()
+	if err != nil {
+		return false
+	}
+	macosDir := filepath.Dir(exe)
+	contentsDir := filepath.Dir(macosDir)
+	return filepath.Base(macosDir) == "MacOS" && filepath.Base(contentsDir) == "Contents"
+}
+
+func shellAppIcon() []byte {
+	if runtime.GOOS == "darwin" {
+		// macOS .app Bundle 会通过 Info.plist 自动使用 Contents/Resources/icon.icns（全套 Retina 多尺寸）。
+		// 避免在运行时调用 [NSApp setApplicationIconImage:] 用固定单张位图覆盖系统高分图标；
+		// 仅在非 Bundle（如开发模式 go run / task dev）下提供符合 macOS 留白规范的图标。
+		if isMacAppBundle() {
+			return nil
+		}
+		return appIconMacOSPNG(512)
+	}
+	return appIconPNG(256)
+}
+
 // ---- 主流程 ----
 
 func (s *shell) run() {
@@ -166,7 +189,7 @@ func (s *shell) run() {
 	s.app = application.New(application.Options{
 		Name:        "Byte TV",
 		Description: "Byte TV",
-		Icon:        appIconPNG(256),
+		Icon:        shellAppIcon(),
 		Services:    services,
 		Mac:         application.MacOptions{ApplicationShouldTerminateAfterLastWindowClosed: false},
 		Linux:       application.LinuxOptions{DisableQuitOnLastWindowClosed: true, ProgramName: "bytetv"},
@@ -259,7 +282,7 @@ func (s *shell) buildMenu() *application.Menu {
 	if runtime.GOOS == "darwin" {
 		appMenu := menu.AddSubmenu("Byte TV")
 		appMenu.Add("关于 Byte TV").OnClick(func(*application.Context) {
-			s.app.Dialog.Info().SetTitle("Byte TV").SetMessage("版本 " + version).SetIcon(appIconPNG(128)).Show()
+			s.app.Dialog.Info().SetTitle("Byte TV").SetMessage("版本 " + version).SetIcon(appIconMacOSPNG(128)).Show()
 		})
 		appMenu.AddSeparator()
 		appMenu.Add("设置…").SetAccelerator("CmdOrCtrl+,").OnClick(func(*application.Context) { s.navigate("/settings") })
